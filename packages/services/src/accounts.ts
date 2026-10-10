@@ -106,6 +106,12 @@ export const businessProfileInput = z
   .refine((v) => v.minValue === undefined || v.maxValue === undefined || v.minValue <= v.maxValue, {
     message: 'The minimum price is above the maximum.',
     path: ['maxValue'],
+    // Check the price range even when other fields are invalid, so the user
+    // sees every problem at once.
+    when: (payload) => {
+      const v = payload.value as { minValue?: unknown; maxValue?: unknown } | undefined;
+      return typeof v?.minValue === 'number' && typeof v?.maxValue === 'number';
+    },
   });
 
 export type BusinessProfileInput = z.input<typeof businessProfileInput>;

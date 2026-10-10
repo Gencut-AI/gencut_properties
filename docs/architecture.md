@@ -35,8 +35,8 @@ One TypeScript codebase, one Postgres database, two running processes.
 | --- | --- |
 | `packages/core` | Built and tested: state machines, permissions, gate, scoring, audit types |
 | `packages/db` | Built and tested: migrations 0001–0002, runner, schema tests |
-| `apps/web` | Not started — npm registry unreachable from the build session |
+| `apps/web` | Shell built: Next.js 16, Tailwind 4, self-hosted Archivo, `/api/health`, PWA manifest and icons |
 | `apps/worker` | Not started (M3/M4) |
-| CI | Workflow written; not yet run on GitHub |
+| CI | Green on GitHub: frozen install, lint, typecheck (incl. web), tests on Postgres 16, web build, gitleaks |
 
 See `decisions.md` for why each choice was made.

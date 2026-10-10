@@ -19,7 +19,7 @@ Architecture decisions: `docs/decisions.md`.
 | --- | --- |
 | `packages/core` | Domain services shared by every interface: state machines, permissions, compliance gate, scoring, audit events. No I/O, no npm dependencies. |
 | `packages/db` | Postgres schema as SQL migrations (`migrations/NNNN_name.{up,down}.sql`), the `psql`-based runner, schema tests. |
-| `apps/web` | Next.js PWA + API routes + WhatsApp webhook (milestone M0b, not yet created). |
+| `apps/web` | Next.js 16 PWA: pages, API routes (`/api/health`), later the WhatsApp webhook. Deployed to Netlify project `gencut` (`apps/web/netlify.toml`). |
 | `apps/worker` | Agent runs, video rendering, outreach execution (M3/M4, not yet created). |
 | `scripts/` | Repository lint and local tooling. |
 | `docs/` | Architecture, product, agents, data model, decisions, development. |
@@ -33,6 +33,7 @@ pnpm lint                        # repo rules: secrets, no model names / console
 pnpm typecheck                   # tsc --strict, no emit
 pnpm test                        # node:test — core, db (needs TEST_DATABASE_URL), scripts
 pnpm check                       # all three; must pass before every commit
+pnpm dev / pnpm build            # run or build the web app
 DATABASE_URL=... pnpm db:migrate # apply pending migrations
 ```
 

@@ -14,3 +14,7 @@ coverage/
 
 # Local test databases
 .tmp/
+
+# Next.js generated
+next-env.d.ts
+*.tsbuildinfo

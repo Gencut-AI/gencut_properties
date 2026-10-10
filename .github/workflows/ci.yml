@@ -53,6 +53,9 @@ jobs:
       - name: Tests (unit, schema, migrations)
         run: pnpm test
 
+      - name: Build web app
+        run: pnpm build
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 5

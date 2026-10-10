@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * GenCut design tokens.
+ * Palette drawn from Biscayne Bay: deep bay ink, sea-glass surfaces, a teal
+ * working color, and a flamingo accent reserved for "live" moments (the Film
+ * Crew recording, an item that needs the user now). Type: Archivo, using its
+ * width axis — expanded for display (Miami Beach deco signage), normal for text.
+ */
+@theme {
+  --color-ink: #10242b;
+  --color-ink-soft: #3d555c;
+  --color-paper: #fafbfa;
+  --color-glass: #e4eeeb;
+  --color-glass-deep: #c9dcd7;
+  --color-bay: #0f6e73;
+  --color-bay-deep: #0a5357;
+  --color-flamingo: #ef5f82;
+
+  --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-panel: 1.25rem;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-variation-settings: 'wdth' 100;
+  line-height: 1.55;
+  min-height: 100dvh;
+}
+
+.display {
+  font-variation-settings: 'wdth' 125;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-bay);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes rec {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.rec-dot {
+  animation: rec 1.6s ease-in-out infinite;
+}

@@ -1,0 +1,27 @@
+{
+  "name": "gencut",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GenCut \u2014 AI customer-acquisition workforce for real-estate agents and brokers.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @gencut/web typecheck",
+    "test": "node --test --test-concurrency=1 --test-reporter=spec \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "test:core": "node --test --test-reporter=spec \"packages/core/test/**/*.test.ts\"",
+    "test:db": "node --test --test-concurrency=1 --test-reporter=spec \"packages/db/test/**/*.test.ts\"",
+    "lint": "node scripts/lint.ts",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "db:migrate": "node packages/db/src/migrate.ts up",
+    "db:rollback": "node packages/db/src/migrate.ts down",
+    "build": "pnpm --filter @gencut/web build",
+    "dev": "pnpm --filter @gencut/web dev"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "typescript": "6.0.3"
+  }
+}

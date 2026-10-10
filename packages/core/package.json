@@ -1,0 +1,10 @@
+{
+  "name": "@gencut/core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GenCut domain services: state machines, permissions, compliance gate, opportunity scoring. Shared by the web app, the WhatsApp interface and the worker.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

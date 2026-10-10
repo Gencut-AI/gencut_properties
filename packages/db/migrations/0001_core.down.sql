@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS audit_events;
+DROP FUNCTION IF EXISTS audit_events_append_only();
+DROP TABLE IF EXISTS suppressions;
+DROP TABLE IF EXISTS consents;
+DROP TABLE IF EXISTS outreach_actions;
+DROP FUNCTION IF EXISTS outreach_action_guard();
+DROP TABLE IF EXISTS campaigns;
+DROP TABLE IF EXISTS workspace_permissions;
+DROP TABLE IF EXISTS business_profiles;
+DROP TABLE IF EXISTS memberships;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS workspaces;

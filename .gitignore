@@ -1,0 +1,20 @@
+node_modules/
+.pnpm-store/
+dist/
+.next/
+.netlify/
+coverage/
+*.log
+.DS_Store
+
+# Local environment — never commit real values
+.env
+.env.*
+!.env.example
+
+# Local test databases
+.tmp/
+
+# Next.js generated
+next-env.d.ts
+*.tsbuildinfo

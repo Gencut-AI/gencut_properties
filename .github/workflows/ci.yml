@@ -38,11 +38,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          # Add `cache: pnpm` once pnpm-lock.yaml is committed (it requires the lockfile).
+          cache: pnpm
 
       - name: Install
-        # Switch to --frozen-lockfile once pnpm-lock.yaml is committed.
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Repository lint
         run: pnpm lint

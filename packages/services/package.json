@@ -1,0 +1,15 @@
+{
+  "name": "@gencut/services",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GenCut application services: database-backed use cases with authorization and audit. Called by the web app, the WhatsApp webhook and the worker.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gencut/core": "workspace:*",
+    "postgres": "3.4.9",
+    "zod": "4.6.5"
+  }
+}

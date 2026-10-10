@@ -1,5 +1,6 @@
 import { probeDatabase } from '../lib/db-probe.ts';
 import { getHealth } from '../lib/health.ts';
+import { healthEnv } from '../lib/runtime-env.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ const steps = [
 ] as const;
 
 export default async function Home() {
-  const health = await getHealth(process.env, probeDatabase);
+  const health = await getHealth(healthEnv(), probeDatabase);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-5xl flex-col px-5 pb-10 pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-10">

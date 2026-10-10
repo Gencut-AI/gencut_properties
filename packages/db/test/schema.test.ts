@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import {
   AUDIT_ACTOR_TYPES,
+  AUDIT_ENTITY_TYPES,
   AUDIT_INTERFACES,
   CAMPAIGN_STATES,
   CHANNELS,
@@ -57,6 +58,15 @@ describe('schema matches the domain model', () => {
         );
       }
     }
+    for (const e of AUDIT_ENTITY_TYPES) {
+      db.query(
+        `INSERT INTO audit_events (workspace_id, actor_type, via, entity_type, entity_id, action) VALUES ('${workspace}', 'system', 'api', '${e}', 'x', 'test')`,
+      );
+    }
+    expectSqlError(
+      db,
+      `INSERT INTO audit_events (workspace_id, actor_type, via, entity_type, entity_id, action) VALUES ('${workspace}', 'system', 'api', 'invoice', 'x', 'test')`,
+    );
     expectSqlError(db, `INSERT INTO suppressions (workspace_id, channel, address, reason) VALUES ('${workspace}', 'fax', 'x', 'r')`);
     expectSqlError(
       db,

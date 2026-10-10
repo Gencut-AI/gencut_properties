@@ -8,12 +8,25 @@ export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 export const AUDIT_INTERFACES = ['web', 'whatsapp', 'worker', 'api'] as const;
 export type AuditInterface = (typeof AUDIT_INTERFACES)[number];
 
+export const AUDIT_ENTITY_TYPES = [
+  'workspace',
+  'membership',
+  'business_profile',
+  'campaign',
+  'outreach_action',
+  'opportunity',
+  'permission',
+  'consent',
+  'suppression',
+] as const;
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
+
 export interface AuditEvent {
   readonly workspaceId: string;
   readonly actorType: AuditActorType;
   readonly actorId: string | null;
   readonly via: AuditInterface;
-  readonly entityType: 'campaign' | 'outreach_action' | 'opportunity' | 'permission' | 'consent' | 'suppression';
+  readonly entityType: AuditEntityType;
   readonly entityId: string;
   readonly action: string;
   readonly fromState?: string;

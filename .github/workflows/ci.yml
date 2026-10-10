@@ -49,8 +49,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Tests (unit, schema, migrations)
-        run: pnpm test
+      - name: Tests (unit, schema, migrations, services)
+        run: pnpm test:ci
+
+      - name: Annotate test failures
+        if: failure()
+        run: test -f test-results.xml && node scripts/ci-annotate.ts test-results.xml
 
       - name: Build web app
         run: pnpm build

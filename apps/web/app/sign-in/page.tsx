@@ -22,7 +22,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         <p className="mt-3 text-ink-soft">We'll email you a link. No password to remember.</p>
         {error === 'link' && (
           <p className="mt-4 rounded-xl bg-[#fde7ec] p-4 text-sm text-[#7d1830]" role="alert">
-            That sign-in link has expired or was already used. Request a new one below.
+            That sign-in link didn't work. It may have expired, been used already, or been opened in a different browser from the one you requested it in. Request a new one below and open it on this device.
           </p>
         )}
         <div className="mt-8">

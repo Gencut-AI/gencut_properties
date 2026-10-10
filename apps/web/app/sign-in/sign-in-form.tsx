@@ -11,7 +11,7 @@ export function SignInForm() {
       <div className="rounded-panel bg-glass p-6" role="status">
         <h2 className="display text-2xl font-semibold">Check your inbox</h2>
         <p className="mt-2 text-ink-soft">
-          We sent a sign-in link to <strong className="text-ink">{state.email}</strong>. Open it on this device to continue.
+          We sent a sign-in link to <strong className="text-ink">{state.email}</strong>. Open it in this same browser to continue.
           It expires in one hour.
         </p>
       </div>

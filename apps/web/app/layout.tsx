@@ -1,14 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import { Archivo } from 'next/font/google';
 import type { ReactNode } from 'react';
+// Self-hosted variable font (weight + width axes, OFL-1.1): no build-time or
+// runtime requests to a third-party font service.
+import '@fontsource-variable/archivo/wdth.css';
 import './globals.css';
-
-const archivo = Archivo({
-  subsets: ['latin'],
-  axes: ['wdth'],
-  variable: '--font-archivo',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: { default: 'GenCut', template: '%s · GenCut' },
@@ -27,7 +22,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={archivo.variable}>
+    <html lang="en">
       <body className="antialiased">{children}</body>
     </html>
   );

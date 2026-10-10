@@ -17,7 +17,7 @@
   --color-bay-deep: #0a5357;
   --color-flamingo: #ef5f82;
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
 
   --radius-panel: 1.25rem;
 }

@@ -4,8 +4,8 @@ import type { NextConfig } from 'next';
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 const config: NextConfig = {
-  // @gencut/core ships TypeScript source; Next compiles it with the app.
-  transpilePackages: ['@gencut/core'],
+  // Workspace packages ship TypeScript source; Next compiles them with the app.
+  transpilePackages: ['@gencut/core', '@gencut/services'],
   poweredByHeader: false,
   reactStrictMode: true,
   env: {

@@ -1,6 +1,9 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { probeDatabase } from '../lib/db-probe.ts';
 import { getHealth } from '../lib/health.ts';
 import { healthEnv } from '../lib/runtime-env.ts';
+import { currentUser } from '../lib/session.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,16 +14,16 @@ const steps = [
 ] as const;
 
 export default async function Home() {
+  if (await currentUser()) redirect('/home');
   const health = await getHealth(healthEnv(), probeDatabase);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-5xl flex-col px-5 pb-10 pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-10">
       <header className="flex items-center justify-between py-4">
         <span className="display text-xl font-semibold">GenCut</span>
-        <span className="flex items-center gap-2 text-sm text-ink-soft">
-          <span className="rec-dot inline-block size-2.5 rounded-full bg-flamingo" aria-hidden="true" />
-          Film Crew assembling
-        </span>
+        <Link href="/sign-in" className="flex min-h-11 items-center rounded-lg px-3 font-medium text-bay-deep hover:bg-glass">
+          Sign in
+        </Link>
       </header>
 
       <section className="mt-10 sm:mt-20">
@@ -29,8 +32,14 @@ export default async function Home() {
         </h1>
         <p className="mt-6 max-w-[56ch] text-lg text-ink-soft">
           GenCut finds the Miami homeowners worth calling, produces the campaign to win the listing, and waits for your
-          yes. Workspaces open to the first agents soon.
+          yes.
         </p>
+        <Link
+          href="/sign-in"
+          className="mt-8 inline-flex h-14 items-center rounded-xl bg-bay px-8 text-lg font-semibold text-paper hover:bg-bay-deep"
+        >
+          Get started
+        </Link>
       </section>
 
       <ol className="mt-14 grid gap-px overflow-hidden rounded-panel bg-glass-deep sm:grid-cols-3">

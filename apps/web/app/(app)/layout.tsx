@@ -2,6 +2,9 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { requireSession } from '../../lib/session.ts';
 
+// Every signed-in screen depends on the request's session; never prerender.
+export const dynamic = 'force-dynamic';
+
 // Only screens that exist are linked. Opportunities, Campaigns and Pipeline
 // join the navigation in the milestones that build them.
 const NAV = [

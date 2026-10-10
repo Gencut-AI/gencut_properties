@@ -1,0 +1,10 @@
+{
+  "name": "@gencut/db",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GenCut Postgres schema: SQL migrations, migration runner, schema tests.",
+  "type": "module",
+  "exports": {
+    "./migrate": "./src/migrate.ts"
+  }
+}

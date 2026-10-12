@@ -1,18 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { redirectTo } from '../lib/redirect.ts';
+import { redirectHeaders } from '../lib/redirect-location.ts';
 
-describe('redirectTo', () => {
+describe('redirectHeaders', () => {
   it('uses a relative Location so the browser stays on its current host', () => {
-    const r = redirectTo('/home');
-    assert.equal(r.status, 303);
-    assert.equal(r.headers.get('location'), '/home');
-    assert.equal(r.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(redirectHeaders('/home'), { location: '/home', 'cache-control': 'no-store' });
   });
 
   it('keeps query strings and refuses off-site targets', () => {
-    assert.equal(redirectTo('/sign-in?error=link').headers.get('location'), '/sign-in?error=link');
-    assert.equal(redirectTo('https://evil.example/x').headers.get('location'), '/');
-    assert.equal(redirectTo('//evil.example').headers.get('location'), '/');
+    assert.equal(redirectHeaders('/sign-in?error=link').location, '/sign-in?error=link');
+    assert.equal(redirectHeaders('https://evil.example/x').location, '/');
+    assert.equal(redirectHeaders('//evil.example').location, '/');
   });
 });

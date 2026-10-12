@@ -1,17 +1,7 @@
 import { NextResponse } from 'next/server';
-import { safeNextPath } from './safe-redirect.ts';
+import { redirectHeaders } from './redirect-location.ts';
 
-/**
- * Redirect to a same-site path using a relative Location header.
- *
- * Never build absolute redirect URLs from request.nextUrl.origin: on Netlify
- * that origin is the internal per-deploy address (<id>--site.netlify.app),
- * not the address the visitor is on, so the browser would leave the domain
- * that holds its session cookies.
- */
+/** Same-site redirect that keeps the browser on its current host. See redirect-location.ts. */
 export function redirectTo(path: string, status: 302 | 303 | 307 = 303): NextResponse {
-  return new NextResponse(null, {
-    status,
-    headers: { location: safeNextPath(path, '/'), 'cache-control': 'no-store' },
-  });
+  return new NextResponse(null, { status, headers: redirectHeaders(path) });
 }

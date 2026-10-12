@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import type { EmailOtpType } from '@supabase/supabase-js';
-import { type NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { redirectTo } from '../../../lib/redirect.ts';
 import { safeNextPath } from '../../../lib/safe-redirect.ts';
 import { supabaseConfig } from '../../../lib/supabase/config.ts';
 
@@ -10,9 +11,9 @@ const OTP_TYPES: readonly EmailOtpType[] = ['email', 'magiclink', 'signup', 'rec
  * Completes email sign-in. Accepts the token-hash link (works in any browser)
  * and the PKCE code link (same browser as the request).
  *
- * The session cookies are written directly onto the redirect response, rather
- * than through next/headers' cookies(), so they are guaranteed to travel with
- * the redirect on every host (they did not on Netlify).
+ * Session cookies are written onto the redirect response itself, and the
+ * redirect is relative, so the browser stays on the address it came from and
+ * keeps the cookies (see lib/redirect.ts).
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -20,17 +21,11 @@ export async function GET(request: NextRequest) {
   const type = params.get('type') as EmailOtpType | null;
   const code = params.get('code');
   const config = supabaseConfig();
+  const hasOtp = Boolean(tokenHash && type && OTP_TYPES.includes(type));
 
-  const failure = new URL('/sign-in', request.nextUrl.origin);
-  failure.searchParams.set('error', 'link');
-  if (!config || (!code && !(tokenHash && type && OTP_TYPES.includes(type)))) {
-    return NextResponse.redirect(failure);
-  }
+  if (!config || (!code && !hasOtp)) return redirectTo('/sign-in?error=link');
 
-  const success = new URL(safeNextPath(params.get('next')), request.nextUrl.origin);
-  const response = NextResponse.redirect(success);
-  response.headers.set('cache-control', 'no-store');
-
+  const response = redirectTo(safeNextPath(params.get('next')));
   const supabase = createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll() {
@@ -43,10 +38,9 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const { error } =
-    tokenHash && type && OTP_TYPES.includes(type)
-      ? await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
-      : await supabase.auth.exchangeCodeForSession(code as string);
+  const { error } = hasOtp
+    ? await supabase.auth.verifyOtp({ type: type as EmailOtpType, token_hash: tokenHash as string })
+    : await supabase.auth.exchangeCodeForSession(code as string);
 
-  return error ? NextResponse.redirect(failure) : response;
+  return error ? redirectTo('/sign-in?error=link') : response;
 }

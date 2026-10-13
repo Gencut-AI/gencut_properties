@@ -253,10 +253,14 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
       reasons: readonly ScoreReason[];
       tenure: number;
     }[] = [];
+    // Parcels in the focus ZIPs, property types and with a named owner: what the agent would call "homes reviewed".
+    let considered = 0;
     for (const r of records) {
       const facts = parcelFacts(r.payload);
       const result = scoreSellerOpportunity(facts, focus, asOf);
-      if (!result.eligible || result.score < DISCOVERY_MIN_SCORE) continue;
+      if (!result.eligible) continue;
+      considered++;
+      if (result.score < DISCOVERY_MIN_SCORE) continue;
       scored.push({
         recordId: r.id,
         subjectKey: parcelSubjectKey(r.payload.countyCode, r.payload.parcelId),
@@ -272,7 +276,7 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
         b.score - a.score || b.confidence - a.confidence || a.tenure - b.tenure || a.subjectKey.localeCompare(b.subjectKey),
     );
     const kept = scored.slice(0, DISCOVERY_MAX_OPPORTUNITIES);
-    const summary = { considered: records.length, qualified: scored.length, kept: kept.length };
+    const summary = { considered, qualified: scored.length, kept: kept.length };
 
     await sql.begin(async (tx) => {
       const rows = kept.map((k) => ({

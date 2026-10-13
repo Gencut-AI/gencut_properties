@@ -1,38 +1,46 @@
+import { createServerClient } from '@supabase/ssr';
 import type { EmailOtpType } from '@supabase/supabase-js';
-import { type NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { redirectTo } from '../../../lib/redirect.ts';
 import { safeNextPath } from '../../../lib/safe-redirect.ts';
-import { createSupabaseServerClient } from '../../../lib/supabase/server.ts';
+import { supabaseConfig } from '../../../lib/supabase/config.ts';
 
 const OTP_TYPES: readonly EmailOtpType[] = ['email', 'magiclink', 'signup', 'recovery', 'invite', 'email_change'];
 
 /**
- * Completes email sign-in. Accepts the token-hash link (works when the email
- * is opened in another browser) and the PKCE code link (same browser).
+ * Completes email sign-in. Accepts the token-hash link (works in any browser)
+ * and the PKCE code link (same browser as the request).
+ *
+ * Session cookies are written onto the redirect response itself, and the
+ * redirect is relative, so the browser stays on the address it came from and
+ * keeps the cookies (see lib/redirect.ts).
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-  const next = safeNextPath(params.get('next'));
   const tokenHash = params.get('token_hash');
   const type = params.get('type') as EmailOtpType | null;
   const code = params.get('code');
+  const config = supabaseConfig();
+  const hasOtp = Boolean(tokenHash && type && OTP_TYPES.includes(type));
 
-  const supabase = await createSupabaseServerClient();
-  let ok = false;
-  if (tokenHash && type && OTP_TYPES.includes(type)) {
-    ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
-  } else if (code) {
-    ok = !(await supabase.auth.exchangeCodeForSession(code)).error;
-  }
+  if (!config || (!code && !hasOtp)) return redirectTo('/sign-in?error=link');
 
-  const target = request.nextUrl.clone();
-  target.search = '';
-  if (ok) {
-    const dest = new URL(next, request.nextUrl.origin);
-    target.pathname = dest.pathname;
-    target.search = dest.search;
-  } else {
-    target.pathname = '/sign-in';
-    target.searchParams.set('error', 'link');
-  }
-  return NextResponse.redirect(target);
+  const response = redirectTo(safeNextPath(params.get('next')));
+  const supabase = createServerClient(config.url, config.publishableKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet, headers) {
+        for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, options);
+        for (const [key, value] of Object.entries(headers ?? {})) response.headers.set(key, value);
+      },
+    },
+  });
+
+  const { error } = hasOtp
+    ? await supabase.auth.verifyOtp({ type: type as EmailOtpType, token_hash: tokenHash as string })
+    : await supabase.auth.exchangeCodeForSession(code as string);
+
+  return error ? redirectTo('/sign-in?error=link') : response;
 }

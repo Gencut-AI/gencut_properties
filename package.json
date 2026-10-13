@@ -18,7 +18,8 @@
     "db:migrate": "node packages/db/src/migrate.ts up",
     "db:rollback": "node packages/db/src/migrate.ts down",
     "build": "pnpm --filter @gencut/web build",
-    "dev": "pnpm --filter @gencut/web dev"
+    "dev": "pnpm --filter @gencut/web dev",
+    "test:ci": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=test-results.xml \"packages/*/test/**/*.test.ts\" \"apps/*/test/**/*.test.ts\" \"scripts/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "26.2.0",

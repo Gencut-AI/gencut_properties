@@ -18,3 +18,4 @@ coverage/
 # Next.js generated
 next-env.d.ts
 *.tsbuildinfo
+test-results.xml

@@ -12,6 +12,10 @@ const config: NextConfig = {
     GENCUT_VERSION: pkg.version,
     // Netlify sets COMMIT_REF; GitHub Actions sets GITHUB_SHA.
     GENCUT_COMMIT: process.env.COMMIT_REF ?? process.env.GITHUB_SHA ?? '',
+    // Where sign-in emails link back to. Netlify sets CONTEXT, URL and
+    // DEPLOY_PRIME_URL at build time; empty locally (request origin is used).
+    GENCUT_SITE_URL:
+      process.env.CONTEXT === 'production' ? (process.env.URL ?? '') : (process.env.DEPLOY_PRIME_URL ?? ''),
   },
 };
 

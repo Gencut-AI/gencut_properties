@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { probeDatabase } from '../lib/db-probe.ts';
 import { getHealth } from '../lib/health.ts';
 import { healthEnv } from '../lib/runtime-env.ts';
+import { AUTH_CALLBACK_PARAMS } from '../lib/site-url.ts';
 import { currentUser } from '../lib/session.ts';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,18 @@ const steps = [
   { title: 'Approve', body: 'Nothing goes out until you say so. Every message is checked against Florida and federal rules first.' },
 ] as const;
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // If Supabase falls back to the Site URL, finish the sign-in instead of
+  // showing the landing page.
+  const params = await searchParams;
+  if (typeof params.code === 'string' || typeof params.token_hash === 'string' || typeof params.error_code === 'string') {
+    const forward = new URLSearchParams({ next: '/home' });
+    for (const key of AUTH_CALLBACK_PARAMS) {
+      const v = params[key];
+      if (typeof v === 'string') forward.set(key, v);
+    }
+    redirect(`/auth/confirm?${forward.toString()}`);
+  }
   if (await currentUser()) redirect('/home');
   const health = await getHealth(healthEnv(), probeDatabase);
 

@@ -29,14 +29,15 @@ One TypeScript codebase, one Postgres database, two running processes.
   outcome (`agent_runs`, M3).
 - **Provenance.** Every fact shown to a user links to a `source_records` row.
 
-## Status (2026-10-10)
+## Status (2026-10-13)
 
 | Component | Status |
 | --- | --- |
 | `packages/core` | Built and tested: state machines, permissions, gate, scoring, audit types |
-| `packages/db` | Built and tested: migrations 0001–0002, runner, schema tests |
-| `apps/web` | Shell built: Next.js 16, Tailwind 4, self-hosted Archivo, `/api/health`, PWA manifest and icons |
-| `apps/worker` | Not started (M3/M4) |
+| `packages/db` | Built and tested: migrations 0001–0005, runner, schema tests |
+| `packages/services` | Accounts, business profile, discovery (coverage, import storage, scoring), opportunity feed; all audited and tenant-checked |
+| `apps/web` | Sign-in, onboarding, profile, home, opportunities feed and detail |
+| `apps/worker` | Discovery job: FL DOR roll import and scoring, scheduled on GitHub Actions (D-009) |
 | CI | Green on GitHub: frozen install, lint, typecheck (incl. web), tests on Postgres 16, web build, gitleaks |
 
 See `decisions.md` for why each choice was made.

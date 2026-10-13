@@ -20,11 +20,18 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 ## Discovery
 
 - `data_sources` — each source with kind, terms URL and documented restrictions/costs.
-- `source_records` — raw records with file date and payload (public: shared; uploads: per
-  workspace).
+- `source_records` — records with file date, situs `zip` and payload (public: shared;
+  uploads: per workspace). For the FL DOR roll, `external_id` is `<county>:<parcel>` and
+  the payload is a `StoredParcel` (core), not the raw row.
+- `zip_coverage` — per county ZIP: import status (`pending` → `importing` → `ready` /
+  `failed`), the roll file and its date, parcel count.
+- `workspace_discovery` — per workspace: scoring status, counts considered / qualified /
+  kept, scoring version.
 - `prospects` — people a workspace may contact, with `contact_basis`.
 - `opportunities` — score 0–100, confidence, reasons (with cited fact fields), scoring
-  version, status; always linked to a `source_records` row.
+  version, status (`new`, `saved`, `dismissed`, `in_campaign`); always linked to a
+  `source_records` row; one per `subject_key` (e.g. `fl-dor-nal:23:<parcel>`) and type, so a
+  newer roll updates it instead of duplicating it.
 
 ## Campaigns and outreach
 

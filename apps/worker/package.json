@@ -1,0 +1,14 @@
+{
+  "name": "@gencut/worker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GenCut background jobs: public-record imports and opportunity scoring (later: agent runs, media rendering, approved outreach execution).",
+  "type": "module",
+  "scripts": {
+    "discover": "node src/main.ts"
+  },
+  "dependencies": {
+    "@gencut/core": "workspace:*",
+    "@gencut/services": "workspace:*"
+  }
+}

@@ -65,3 +65,31 @@ behind `GENCUT_LIVE_EMAIL_SENDING`, off by default.
 paid sources (Miami-Dade Clerk, RentCast) are add-ons behind the same interface after
 approval.
 **Why:** statewide, public, documented, exempt records already removed.
+
+## D-009 · 2026-10-13 · Discovery runs on GitHub Actions; one roll serves every workspace
+
+**Decision:** the Florida DOR roll is imported by a scheduled GitHub Actions workflow
+(`.github/workflows/discovery.yml`, every 10 minutes, idle when nothing is due) running
+`apps/worker`. Parcels are stored once per county ZIP as shared public `source_records`
+(residential parcels only, only the columns GenCut uses) and scored per workspace.
+**Why:** GitHub's runners can reach the DOR portal; Netlify functions are too short-lived
+for a 59 MB download and a 938,000-row parse, and the development workspaces cannot reach
+the portal at all. Importing per requested ZIP keeps the free database tier small.
+**Revisit if:** imports need to start within seconds of a profile save (trigger the
+workflow from the app), or the D-003 worker host exists.
+
+## D-010 · 2026-10-13 · Seller scoring v2: tenure from the assessment gap
+
+**Decision:** `seller-v2` drops the purchase-date tenure signal and reads long ownership
+from the ratio of non-school assessed value (`AV_NSD`) to market value (`JV`): Florida
+caps annual assessment increases at 3% for homesteads and 10% for other residential
+property, so a wide gap builds only over years. Absentee means a different tax-mail street
+line **and** no homestead exemption. A sale on the roll in the last two years subtracts
+points. Opportunities need 55 points (two signals beyond the focus match); a workspace
+keeps its best 100, ties broken by the wider gap.
+**Why:** the NAL roll's sale fields cover only the current and previous year, so v1's
+tenure signal had no data. The school assessed value (`AV_SD`) is not capped for
+non-homestead property and would hide the gap. The bar of 40 qualified 42% of 33180's
+parcels in the dry run, which is not a useful filter.
+**Revisit if:** recorded campaign outcomes (M6) show which signals predict listings.
+

@@ -20,7 +20,7 @@ Architecture decisions: `docs/decisions.md`.
 | `packages/core` | Domain services shared by every interface: state machines, permissions, compliance gate, scoring, audit events. No I/O, no npm dependencies. |
 | `packages/db` | Postgres schema as SQL migrations (`migrations/NNNN_name.{up,down}.sql`), the `psql`-based runner, schema tests. |
 | `apps/web` | Next.js 16 PWA: pages, API routes (`/api/health`), later the WhatsApp webhook. Deployed to Netlify project `gencut` (`apps/web/netlify.toml`). |
-| `apps/worker` | Agent runs, video rendering, outreach execution (M3/M4, not yet created). |
+| `apps/worker` | Background jobs. Now: discovery (FL DOR roll import + scoring, `.github/workflows/discovery.yml`). Later: agent runs, rendering, approved outreach execution. |
 | `scripts/` | Repository lint and local tooling. |
 | `docs/` | Architecture, product, agents, data model, decisions, development. |
 
@@ -35,7 +35,13 @@ pnpm test                        # node:test — core, db (needs TEST_DATABASE_U
 pnpm check                       # all three; must pass before every commit
 pnpm dev / pnpm build            # run or build the web app
 DATABASE_URL=... pnpm db:migrate # apply pending migrations
+DATABASE_URL=... pnpm --filter @gencut/worker discover   # one discovery pass (needs DOR portal access)
 ```
+
+The DOR portal (floridarevenue.com) is reachable from GitHub Actions but not from every
+development environment. Pull requests that touch discovery code run `Discovery / dry-run`:
+the real roll into a throwaway database, aggregates only. Test fixtures are synthetic; never
+commit rows from a real roll.
 
 TypeScript runs directly on Node ≥ 22.18 (type stripping). Therefore:
 - import local files with the `.ts` extension;

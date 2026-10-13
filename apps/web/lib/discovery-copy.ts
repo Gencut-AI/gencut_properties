@@ -58,9 +58,9 @@ export function discoveryHeadline(v: DiscoveryView, countyName: string): Discove
   if (v.status === 'not_requested') {
     return {
       phase: 'not_requested',
-      title: 'Discovery starts when your profile is saved',
-      body: 'Save your profile and GenCut will start reading public records for your ZIP codes.',
-      working: false,
+      title: 'Discovery is queued',
+      body: 'GenCut will start reading public property records for your ZIP codes within a few minutes; this page updates by itself.',
+      working: true,
     };
   }
   if (reading.length > 0) {

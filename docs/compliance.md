@@ -22,6 +22,15 @@ Pending regulatory change: the FCC adopted a revised TCPA consent-revocation ord
 30 Sep 2026, effective 30 days after Federal Register publication. Review the opt-out
 handling against the published text before enabling texts.
 
+## Data sources
+
+| Source | Basis | What GenCut keeps | What it authorizes |
+| --- | --- | --- | --- |
+| Florida DOR NAL assessment roll | Public record, Fla. Stat. ch. 119; free from the DOR data portal | Residential parcels in requested ZIPs: owner of record, tax mailing address, situs, values, homestead flag, last roll sale | Discovery and research only. No phone or email; contact needs consent or another lawful basis per channel (gate) |
+
+Owner records made confidential under Fla. Stat. 119.071 appear without a name and are not
+imported. Scoring uses property facts only — never protected characteristics or proxies.
+
 ## Sources
 
 - FTC — CAN-SPAM Act: A Compliance Guide for Business — https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business

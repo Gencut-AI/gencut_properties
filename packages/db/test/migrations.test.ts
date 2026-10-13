@@ -49,8 +49,10 @@ describe('migrations', () => {
       'source_records',
       'suppressions',
       'users',
+      'workspace_discovery',
       'workspace_permissions',
       'workspaces',
+      'zip_coverage',
     ]);
   });
 

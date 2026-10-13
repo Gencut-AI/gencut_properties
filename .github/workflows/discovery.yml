@@ -1,0 +1,84 @@
+name: Discovery
+
+# Imports the Florida DOR assessment roll for the ZIP codes agents asked for,
+# and scores opportunities. Runs on GitHub's servers because they can reach
+# the DOR data portal.
+#
+# - `run`: every 10 minutes (and on demand) against the GenCut database in the
+#   DATABASE_URL repository secret. Does nothing when no work is due.
+# - `dry-run`: on pull requests that touch discovery code, the whole pipeline
+#   against the real roll but a throwaway database; prints aggregates only.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/worker/**
+      - packages/core/src/sources/**
+      - packages/core/src/opportunity/**
+      - packages/services/src/discovery.ts
+      - packages/db/migrations/**
+      - .github/workflows/discovery.yml
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: discovery-run
+      cancel-in-progress: false
+    steps:
+      - name: Check configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error title=DATABASE_URL secret missing::Add the database connection string as a repository secret named DATABASE_URL (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @gencut/worker...
+      - name: Discover
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm --filter @gencut/worker discover
+
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @gencut/worker...
+      - name: Discover against the real roll, into a throwaway database
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: node apps/worker/src/dry-run.ts 33180

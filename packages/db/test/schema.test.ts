@@ -163,16 +163,42 @@ describe('schema matches the domain model', () => {
     );
   });
 
-  it('keeps opportunity scores within 0–100 and tied to a source record', () => {
-    const src = db.query(`INSERT INTO data_sources (key, name, kind) VALUES ('fl-dor-nal', 'FL DOR NAL', 'public_record') RETURNING id`);
+  it('keeps opportunity scores within 0–100, tied to a source record, one per subject', () => {
+    const src = db.query(`SELECT id FROM data_sources WHERE key = 'fl-dor-nal'`);
+    assert.ok(src, 'migration seeds the fl-dor-nal source');
     const rec = db.query(
-      `INSERT INTO source_records (source_id, external_id, file_date, payload) VALUES ('${src}', 'P1', '2026-10-01', '{}') RETURNING id`,
+      `INSERT INTO source_records (source_id, external_id, file_date, zip, payload) VALUES ('${src}', 'P1', '2026-10-01', '33180', '{}') RETURNING id`,
     );
-    const ins = (score: number) =>
-      `INSERT INTO opportunities (workspace_id, source_record_id, type, score, confidence, reasons, scoring_version)
-       VALUES ('${workspace}', '${rec}', 'potential_seller', ${score}, 1, '[]', 'seller-v1')`;
+    const rec2 = db.query(
+      `INSERT INTO source_records (source_id, external_id, file_date, zip, payload) VALUES ('${src}', 'P1', '2026-11-01', '33180', '{}') RETURNING id`,
+    );
+    expectSqlError(
+      db,
+      `INSERT INTO source_records (source_id, external_id, file_date, zip, payload) VALUES ('${src}', 'P2', '2026-10-01', '3318', '{}')`,
+    );
+    const ins = (score: number, record = rec) =>
+      `INSERT INTO opportunities (workspace_id, source_record_id, subject_key, type, score, confidence, reasons, scoring_version)
+       VALUES ('${workspace}', '${record}', 'fl-dor-nal:23:P1', 'potential_seller', ${score}, 1, '[]', 'seller-v2')`;
     expectSqlError(db, ins(101));
     db.query(ins(80));
     expectSqlError(db, ins(70)); // one opportunity per record and type
+    expectSqlError(db, ins(70, rec2)); // and one per subject, across roll files
+  });
+
+  it('tracks ZIP coverage and discovery runs with constrained states', () => {
+    db.query(`INSERT INTO zip_coverage (county_code, zip) VALUES ('23', '33180')`);
+    assert.equal(db.query(`SELECT status FROM zip_coverage WHERE zip = '33180'`), 'pending');
+    expectSqlError(db, `INSERT INTO zip_coverage (county_code, zip, status) VALUES ('23', '33181', 'done')`);
+    expectSqlError(db, `INSERT INTO zip_coverage (county_code, zip) VALUES ('23', 'ABCDE')`);
+    db.query(`INSERT INTO workspace_discovery (workspace_id) VALUES ('${workspace}')`);
+    expectSqlError(db, `UPDATE workspace_discovery SET status = 'done' WHERE workspace_id = '${workspace}'`);
+  });
+
+  it('enables row-level security on every table, so the public Data API sees nothing', () => {
+    const open = db.query(
+      `SELECT string_agg(c.relname, ',') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity`,
+    );
+    assert.equal(open, '');
   });
 });

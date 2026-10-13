@@ -2,4 +2,8 @@ export * from './errors.ts';
 export * from './db.ts';
 export * from './context.ts';
 export * from './audit.ts';
+export * from './markets.ts';
+export * from './membership.ts';
 export * from './accounts.ts';
+export * from './discovery.ts';
+export * from './opportunities.ts';

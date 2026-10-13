@@ -1,18 +1,12 @@
 import { CHANNELS, type Channel, PROPERTY_USES, type WorkspacePermissions } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
+import { requestDiscovery } from './discovery.ts';
+import { MARKETS, type MarketKey } from './markets.ts';
+import { type MembershipRole, requireMembership } from './membership.ts';
 import type { RequestContext } from './context.ts';
 import type { Db, Sql } from './db.ts';
 import { ServiceError } from './errors.ts';
-
-export const MARKETS = [
-  { key: 'miami-dade', label: 'Miami-Dade County' },
-  { key: 'broward', label: 'Broward County' },
-  { key: 'palm-beach', label: 'Palm Beach County' },
-] as const;
-export type MarketKey = (typeof MARKETS)[number]['key'];
-
-export type MembershipRole = 'owner' | 'member';
 
 export interface WorkspaceMembership {
   readonly workspaceId: string;
@@ -66,16 +60,6 @@ async function membershipsFor(db: Db, userId: string): Promise<WorkspaceMembersh
     ORDER BY m.created_at, m.workspace_id
   `;
   return rows.map((r) => ({ workspaceId: r.workspace_id, workspaceName: r.name, role: r.role }));
-}
-
-/** The caller's role in the workspace, or `forbidden`. Every workspace read and write goes through this. */
-export async function requireMembership(db: Db, userId: string, workspaceId: string): Promise<MembershipRole> {
-  if (!z.uuid().safeParse(workspaceId).success) throw new ServiceError('forbidden', 'You do not have access to this workspace.');
-  const [row] = await db<{ role: MembershipRole }[]>`
-    SELECT role FROM memberships WHERE workspace_id = ${workspaceId} AND user_id = ${userId}
-  `;
-  if (!row) throw new ServiceError('forbidden', 'You do not have access to this workspace.');
-  return row.role;
 }
 
 const zip = z.string().regex(/^\d{5}$/, 'Use 5-digit ZIP codes.');
@@ -206,6 +190,10 @@ export async function saveBusinessProfile(
     if (!row) throw new Error('profile upsert returned no row');
     await tx`UPDATE workspaces SET name = ${v.licenseeName} WHERE id = ${workspaceId}`;
     const after = toProfile(row);
+    const prior = before ? toProfile(before) : null;
+    const focusChanged =
+      !prior || ['market', 'focusZips', 'propertyUses', 'minValue', 'maxValue'].some((k) => changedFields(prior, after).includes(k));
+    if (focusChanged) await requestDiscovery(tx, workspaceId, after.market, after.focusZips);
     await recordAudit(tx, {
       workspaceId,
       actorType: 'user',
@@ -214,7 +202,7 @@ export async function saveBusinessProfile(
       entityType: 'business_profile',
       entityId: workspaceId,
       action: before ? 'updated' : 'created',
-      detail: { changedFields: before ? changedFields(toProfile(before), after) : Object.keys(v) },
+      detail: { changedFields: prior ? changedFields(prior, after) : Object.keys(v) },
     });
     return after;
   })) as BusinessProfile;

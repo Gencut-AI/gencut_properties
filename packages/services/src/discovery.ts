@@ -23,8 +23,11 @@ import type { Db, Sql } from './db.ts';
 import { requireMembershipFor } from './membership.ts';
 import { type MarketKey, marketCountyCode } from './markets.ts';
 
-/** An opportunity must reach this score to be shown, and a workspace sees at most this many. */
-export const DISCOVERY_MIN_SCORE = 40;
+/**
+ * An opportunity must reach this score to be shown — in practice two or more
+ * signals beyond being in the focus area — and a workspace sees at most this many.
+ */
+export const DISCOVERY_MIN_SCORE = 55;
 export const DISCOVERY_MAX_OPPORTUNITIES = 100;
 /** A claim older than this is treated as abandoned (the worker crashed) and retried. */
 const STALE_CLAIM = '1 hour';
@@ -242,9 +245,17 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
         AND r.external_id LIKE ${`${county}:%`}
     `;
 
-    const scored: { recordId: string; subjectKey: string; score: number; confidence: number; reasons: readonly ScoreReason[] }[] = [];
+    const scored: {
+      recordId: string;
+      subjectKey: string;
+      score: number;
+      confidence: number;
+      reasons: readonly ScoreReason[];
+      tenure: number;
+    }[] = [];
     for (const r of records) {
-      const result = scoreSellerOpportunity(parcelFacts(r.payload), focus, asOf);
+      const facts = parcelFacts(r.payload);
+      const result = scoreSellerOpportunity(facts, focus, asOf);
       if (!result.eligible || result.score < DISCOVERY_MIN_SCORE) continue;
       scored.push({
         recordId: r.id,
@@ -252,9 +263,14 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
         score: result.score,
         confidence: result.confidence,
         reasons: result.reasons,
+        tenure: tenureRatio(facts.assessedValue, facts.justValue),
       });
     }
-    scored.sort((a, b) => b.score - a.score || b.confidence - a.confidence || a.subjectKey.localeCompare(b.subjectKey));
+    // Equal scores are common; among them, the wider assessment gap (longer ownership) ranks first.
+    scored.sort(
+      (a, b) =>
+        b.score - a.score || b.confidence - a.confidence || a.tenure - b.tenure || a.subjectKey.localeCompare(b.subjectKey),
+    );
     const kept = scored.slice(0, DISCOVERY_MAX_OPPORTUNITIES);
     const summary = { considered: records.length, qualified: scored.length, kept: kept.length };
 
@@ -307,6 +323,11 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
     `;
     throw e;
   }
+}
+
+/** Assessed ÷ market value; lower means a longer-held property. 1 when unknown. */
+function tenureRatio(assessed: number | undefined, just: number | undefined): number {
+  return assessed && just && just > 0 ? Math.min(1, assessed / just) : 1;
 }
 
 /** Delete public parcel records replaced by a newer roll that nothing references any more. */

@@ -223,13 +223,13 @@ describe('discovery', () => {
     const [opp] = await listOpportunities(sql, owner, workspaceId);
     assert.ok(opp);
 
-    for (const p of [
-      listOpportunities(sql, stranger, workspaceId),
-      getOpportunity(sql, stranger, workspaceId, opp.id),
-      setOpportunityStatus(sql, stranger, workspaceId, opp.id, 'dismissed'),
-      getDiscoveryStatus(sql, stranger, workspaceId),
+    for (const attempt of [
+      () => listOpportunities(sql, stranger, workspaceId),
+      () => getOpportunity(sql, stranger, workspaceId, opp.id),
+      () => setOpportunityStatus(sql, stranger, workspaceId, opp.id, 'dismissed'),
+      () => getDiscoveryStatus(sql, stranger, workspaceId),
     ]) {
-      await assert.rejects(p, (e) => e instanceof ServiceError && e.code === 'forbidden');
+      await assert.rejects(attempt(), (e) => e instanceof ServiceError && e.code === 'forbidden');
     }
     // Their own workspace id does not unlock another workspace's opportunity.
     await assert.rejects(getOpportunity(sql, stranger, theirs.workspaceId, opp.id), (e) => e instanceof ServiceError && e.code === 'not_found');

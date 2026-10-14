@@ -39,7 +39,7 @@ try {
     const names = (await listFolder(folder).catch((e: unknown) => [{ name: `error: ${String(e)}` }])).map((f) => f.name);
     notice(`folder ${folder}`, `${names.length} files; Dade: ${names.filter((n) => /dade/i.test(n)).join(' | ') || 'none'}`);
   }
-  for (const path of ['/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/NAL', '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files', '/property/dataportal/Documents/PTO Data Portal']) {
+  for (const path of ['/property/dataportal/Documents/PTO Data Portal/~Public Records', '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/~NAL-EDR', '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/SDF']) {
     const url = `https://floridarevenue.com/property/dataportal/_api/web/GetFolderByServerRelativeUrl('${encodeURIComponent(path)}')/Folders?$select=Name,ItemCount`;
     const body = await fetch(url, { headers: { accept: 'application/json;odata=nometadata' } }).then(async (r) => (r.ok ? ((await r.json()) as { value?: { Name: string; ItemCount: number }[] }).value ?? [] : [{ Name: `HTTP ${r.status}`, ItemCount: 0 }]));
     notice(`subfolders ${path.split('/').at(-1)}`, body.map((f) => `${f.Name}(${f.ItemCount})`).join(' '));

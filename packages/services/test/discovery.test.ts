@@ -113,9 +113,9 @@ describe('discovery', () => {
     assert.ok((await workspacesToScore(sql)).includes(workspaceId));
 
     const result = await scoreWorkspace(sql, workspaceId, ASOF);
-    // Parcels 1–4 are in 33180 (5 is stored under its own ZIP); 4 is a condo, outside the focus,
-    // and 3 is owner-occupied with no other signal, so only the two absentee owners clear the bar.
-    assert.equal(result.considered, 4);
+    // Parcels 1–4 are in 33180 (5 is stored under its own ZIP); 4 is a condo, outside the focus, so it
+    // is not considered; 3 is owner-occupied with no other signal, so only the two absentee owners qualify.
+    assert.equal(result.considered, 3);
     assert.equal(result.qualified, 2);
     assert.equal(result.kept, 2);
 

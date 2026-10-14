@@ -96,8 +96,8 @@ parcels in the dry run, which is not a useful filter.
 ## D-011 · 2026-10-14 · Scoring v3: tenure only from two rolls; institutions and large buildings out
 
 **Decision:**
-- Import the previous year's final roll alongside the current one, and claim long ownership only
-  when the assessment gap appears on both.
+- Claim long ownership only when the assessment gap appears on two consecutive rolls. DOR
+  publishes only the current year's rolls, so the previous roll is GenCut's own stored import.
 - Skip parcels with institutional exemptions, and never read personal exemptions.
 - Leave 10+ unit buildings out unless the profile includes them.
 - Keep investor-owned parcels, with filters for owner type and signals.

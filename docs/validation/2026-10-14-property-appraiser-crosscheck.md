@@ -41,12 +41,15 @@ gap GenCut reads is the statutory 10% cap, and not another discount.
 
 ## Changes made because of this check
 
-1. **Two rolls, not one.** The importer now also reads the county's previous final roll. Long
-   ownership is claimed only when assessed value sat well below market value in *both* years. A
-   gap that appears in one year only (as for folio 3022040000350) earns no tenure points. The text
-   says that a single roll cannot show tenure.
-2. **Recent sales from both rolls.** Sales recorded in either roll (two to three years in all) count
-   against a parcel. DOR qualification codes 01–06 are treated as qualified sales, per the 2025 NAL
+1. **Two rolls, not one.** Long ownership is claimed only when assessed value sat well below
+   market value on *two consecutive* rolls. A gap that appears in one year only (as for folio
+   3022040000350) earns no tenure points. The DOR portal publishes only the current year's
+   rolls (checked 14 Oct 2026: the NAL folder holds 2026P and 2026F only), so the previous roll
+   comes from GenCut's own stored import of last year. Until a second year exists, the reason
+   is the weaker "assessed below market" (+10 instead of +30), and it says that one roll cannot
+   show tenure.
+2. **Recent sales from both sale slots.** Both of the roll's sale slots are read, and sales from
+   the previous roll once it exists. Any sale in the last three years counts against a parcel. DOR qualification codes 01–06 are treated as qualified sales, per the 2025 NAL
    user's guide.
 3. **Institutional owners excluded.** Parcels with a charitable, religious, educational,
    governmental, hospital or similar exemption (DOR exemption fields 09, 12–20, 29, 30, 36, 37, 42–46)

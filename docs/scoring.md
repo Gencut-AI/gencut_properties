@@ -15,7 +15,7 @@ Current rule: `seller-v3` (`packages/core/src/opportunity/scoring.ts`).
 | Owner out of state | +10 | Absentee, with a mailing state other than Florida | The owner's residence |
 | Long held | +30 | Assessed value is far below market value on the current **and** the previous roll | Exact tenure. The two-roll gap shows only that no sale reset the assessment for at least two years |
 | Held 2+ years | +15 | A moderate gap on both rolls | Same as above |
-| Assessed below market | +10 | A deep gap on the current roll, with no previous roll available | Tenure. One sharp revaluation produces the same gap; this reason says so |
+| Assessed below market | +10 | A deep gap on the current roll, with no previous roll available (the case until GenCut has stored a second year) | Tenure. One sharp revaluation produces the same gap; this reason says so |
 | Estate | +15 | Owner of record is named as an estate | Probate status, family circumstances |
 | Recently sold | −30 | A sale on either roll in the last three years (qualified, or $10,000+) | Older sales: the rolls carry only the last two years of sales each |
 | In / outside price range | +10 / −15 | Market value against the profile's range | Listing price |
@@ -38,7 +38,10 @@ beyond being in focus. A workspace keeps its best **100**. Ties go to the wider 
 1. **No purchase date.** Florida's roll records only the last two years of sales. The
    assessment-gap method was wrong for 1 of 10 parcels in the
    [14 Oct 2026 cross-check](validation/2026-10-14-property-appraiser-crosscheck.md). Version 3
-   now requires the gap on two rolls.
+   requires the gap on two rolls. DOR publishes only the current year, so the second roll is
+   GenCut's own stored copy of last year's import. Until then (the 2027 rolls), tenure gives only
+   the weaker single-roll reason. Exact purchase dates would need another source, such as the
+   Property Appraiser's or Clerk's records, under their licence terms.
 2. **Weights are a starting heuristic.** No outcome data exists yet. Outcome tracking (M3)
    records contact, response, appointment and listing against the scoring version, so later
    versions can be compared against what actually happened.

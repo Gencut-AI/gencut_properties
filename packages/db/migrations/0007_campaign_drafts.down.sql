@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS opportunity_outcomes;
+DROP TABLE IF EXISTS model_runs;
+DROP INDEX IF EXISTS campaigns_workspace_recent;
+DROP INDEX IF EXISTS campaigns_one_generating;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS error;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS generation_started_at;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS generation_attempts;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS prompt_version;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS problems;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS facts;
+ALTER TABLE campaigns DROP COLUMN IF EXISTS draft;

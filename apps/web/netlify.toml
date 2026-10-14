@@ -12,3 +12,8 @@
 [build.environment]
   NODE_VERSION = "22"
   PNPM_VERSION = "10.28.0"
+
+# Background jobs that outlast a page request (campaign drafting). Relative to
+# the base directory, like `publish`.
+[functions]
+  directory = "apps/web/netlify/functions"

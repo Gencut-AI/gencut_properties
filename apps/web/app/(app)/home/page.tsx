@@ -1,4 +1,4 @@
-import { MARKETS, getBusinessProfile, getDiscoveryStatus, getPermissions, listOpportunities } from '@gencut/services';
+import { MARKETS, getBusinessProfile, getDiscoveryStatus, getPermissions, listOpportunities, outcomeReport } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -28,10 +28,11 @@ export default async function HomePage() {
   const { ctx, workspace } = await requireSession();
   const profile = await getBusinessProfile(db(), ctx, workspace.workspaceId);
   if (!profile) redirect('/onboarding');
-  const [permissions, discovery, top] = await Promise.all([
+  const [permissions, discovery, top, outcomes] = await Promise.all([
     getPermissions(db(), ctx, workspace.workspaceId),
     getDiscoveryStatus(db(), ctx, workspace.workspaceId),
     listOpportunities(db(), ctx, workspace.workspaceId, { limit: 3 }),
+    outcomeReport(db(), ctx, workspace.workspaceId),
   ]);
   const contactOn = Object.entries(permissions.contact).filter(([, on]) => on).map(([c]) => c);
   const firstName = profile.licenseeName.split(' ')[0];
@@ -67,6 +68,46 @@ export default async function HomePage() {
           </section>
         )}
       </div>
+
+      <section aria-labelledby="results" className="rounded-panel border border-glass-deep p-6">
+        <h2 id="results" className="display text-xl font-semibold">
+          Results
+        </h2>
+        {outcomes.ready ? (
+          <>
+            <p className="mt-2 text-ink-soft">
+              {outcomes.opportunities} opportunities with recorded outcomes, by the score GenCut gave them.
+            </p>
+            <table className="mt-4 w-full text-left text-[0.95rem]">
+              <thead className="text-sm text-ink-soft">
+                <tr>
+                  <th className="py-1 font-normal">Score</th>
+                  <th className="py-1 font-normal">Opportunities</th>
+                  <th className="py-1 font-normal">Owner replied</th>
+                  <th className="py-1 font-normal">Appointments</th>
+                  <th className="py-1 font-normal">Listings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outcomes.bands.map((b) => (
+                  <tr key={b.band} className="border-t border-glass">
+                    <td className="py-1.5">{b.band}</td>
+                    <td className="py-1.5 tabular-nums">{b.opportunities}</td>
+                    <td className="py-1.5 tabular-nums">{b.replied}</td>
+                    <td className="py-1.5 tabular-nums">{b.appointments}</td>
+                    <td className="py-1.5 tabular-nums">{b.listings}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p className="mt-2 max-w-[65ch] text-ink-soft">
+            {outcomes.opportunities} of {outcomes.minimum} opportunities have recorded outcomes. Once {outcomes.minimum} do, GenCut
+            shows how owners responded by score, so the scoring can be checked against what really happened.
+          </p>
+        )}
+      </section>
 
       <section aria-labelledby="focus" className="grid gap-6 sm:grid-cols-2">
         <div className="rounded-panel border border-glass-deep p-6">

@@ -5,6 +5,7 @@ import {
   type ParcelFacts,
   SCORING_VERSION,
   matchesPropertyFocus,
+  ownerKindOf,
   scoreSellerOpportunity,
 } from '../src/index.ts';
 
@@ -13,7 +14,7 @@ const AS_OF = new Date('2026-10-13T12:00:00Z');
 
 const focus: AgentFocus = {
   zips: ['33180', '33160'],
-  propertyUses: ['single_family', 'condo'],
+  propertyUses: ['single_family', 'condo', 'multifamily'],
   minValue: 500_000,
   maxValue: 5_000_000,
 };
@@ -33,6 +34,7 @@ const ownerOccupied: ParcelFacts = {
   assessedValue: 1_150_000,
 };
 
+/** Absentee, out of state, and assessed far below market in both rolls. */
 const absenteeLongHeld: ParcelFacts = {
   ...ownerOccupied,
   parcelId: 'TEST-0002',
@@ -43,53 +45,70 @@ const absenteeLongHeld: ParcelFacts = {
   homestead: false,
   justValue: 2_000_000,
   assessedValue: 1_100_000,
+  priorAssessment: { year: 2025, justValue: 1_800_000, assessedValue: 1_000_000, homestead: false },
 };
 
-function eligible(p: ParcelFacts) {
-  const r = scoreSellerOpportunity(p, focus, AS_OF);
+function eligible(p: ParcelFacts, f: AgentFocus = focus) {
+  const r = scoreSellerOpportunity(p, f, AS_OF);
   assert.equal(r.eligible, true, r.eligible ? '' : r.why);
   if (!r.eligible) throw new Error('unreachable');
   return r;
 }
+const codes = (p: ParcelFacts) => eligible(p).reasons.map((r) => r.code);
 
-describe('seller opportunity scoring v2', () => {
+describe('seller opportunity scoring v3', () => {
   it('scores an absentee, out-of-state, long-held parcel well above an owner-occupied one', () => {
     const high = eligible(absenteeLongHeld);
-    const low = eligible(ownerOccupied);
     assert.deepEqual(
       high.reasons.map((r) => r.code),
       ['in_focus', 'absentee_owner', 'out_of_state_owner', 'long_held_strong', 'value_in_band'],
     );
     assert.equal(high.score, 95); // 20+25+10+30+10
-    assert.equal(low.score, 30); // in_focus 20 + value_in_band 10
+    assert.equal(eligible(ownerOccupied).score, 30); // in_focus 20 + value_in_band 10
   });
 
-  it('reads tenure from the assessed-to-market gap, with the right cap for homesteads', () => {
-    const homesteadDeep = eligible({ ...ownerOccupied, justValue: 1_000_000, assessedValue: 450_000 });
-    assert.ok(homesteadDeep.reasons.some((r) => r.code === 'long_held_strong' && r.text.includes('45%')));
-    const homesteadMid = eligible({ ...ownerOccupied, justValue: 1_000_000, assessedValue: 700_000 });
-    assert.ok(homesteadMid.reasons.some((r) => r.code === 'long_held'));
-    // 70% is strong for non-homestead (10% cap) but only mid for homestead (3% cap)
-    const nonHomestead = eligible({ ...absenteeLongHeld, justValue: 1_000_000, assessedValue: 550_000 });
-    assert.ok(nonHomestead.reasons.some((r) => r.code === 'long_held_strong' && r.text.includes('10% cap')));
-    const noGap = eligible({ ...ownerOccupied, assessedValue: 1_200_000 });
-    assert.ok(!noGap.reasons.some((r) => r.code.startsWith('long_held')));
+  it('claims tenure only when the gap is in both rolls', () => {
+    const strong = eligible(absenteeLongHeld).reasons.find((r) => r.code === 'long_held_strong');
+    assert.match(strong?.text ?? '', /55% of market value now and 56% on the 2025 roll/);
+    assert.match(strong?.text ?? '', /at least two years/);
+
+    // The cross-check case: assessed equalled market last year, then market jumped. No tenure claim.
+    const revalued = { ...absenteeLongHeld, priorAssessment: { year: 2025, justValue: 1_760_000, assessedValue: 1_760_000, homestead: false } };
+    assert.ok(!codes(revalued).some((c) => c.startsWith('long_held') || c === 'assessment_gap'));
+
+    // A moderate gap in both years earns the smaller reason.
+    const moderate = { ...absenteeLongHeld, assessedValue: 1_500_000, priorAssessment: { year: 2025, justValue: 1_800_000, assessedValue: 1_450_000, homestead: false } };
+    assert.ok(codes(moderate).includes('long_held'));
+
+    // Homesteads use the tighter 3% cap's thresholds.
+    const homestead = { ...ownerOccupied, justValue: 1_000_000, assessedValue: 450_000, priorAssessment: { year: 2025, justValue: 950_000, assessedValue: 437_000, homestead: true } };
+    assert.ok(codes(homestead).includes('long_held_strong'));
   });
 
-  it('penalises a recent qualified or priced sale but ignores nominal transfers', () => {
-    const sold = eligible({ ...absenteeLongHeld, recentSale: { year: 2026, month: 3, price: 1_900_000, qualified: true } });
-    const reason = sold.reasons.find((r) => r.code === 'recent_purchase');
-    assert.equal(reason?.text, 'Sold in March 2026; a sale is unlikely soon.');
-    const nominal = eligible({ ...absenteeLongHeld, recentSale: { year: 2026, month: 3, price: 100, qualified: false } });
-    assert.ok(!nominal.reasons.some((r) => r.code === 'recent_purchase'));
-    const old = eligible({ ...absenteeLongHeld, recentSale: { year: 2023, month: 1, price: 900_000, qualified: true } });
-    assert.ok(!old.reasons.some((r) => r.code === 'recent_purchase'));
+  it('with one roll only, notes the gap without claiming how long it has been held', () => {
+    const { priorAssessment: _p, ...oneRoll } = absenteeLongHeld;
+    const gap = eligible(oneRoll).reasons.find((r) => r.code === 'assessment_gap');
+    assert.equal(gap?.points, 10);
+    assert.match(gap?.text ?? '', /One roll cannot show how long/);
+  });
+
+  it('penalises a sale on either roll in the last three years but ignores nominal transfers', () => {
+    const sold = eligible({ ...absenteeLongHeld, recentSales: [{ year: 2024, month: 3, price: 1_900_000, qualified: true }] });
+    assert.equal(sold.reasons.find((r) => r.code === 'recent_purchase')?.text, 'Sold in March 2024; a sale is unlikely soon.');
+    assert.ok(!codes({ ...absenteeLongHeld, recentSales: [{ year: 2026, month: 3, price: 100, qualified: false }] }).includes('recent_purchase'));
+    assert.ok(!codes({ ...absenteeLongHeld, recentSales: [{ year: 2022, month: 1, price: 900_000, qualified: true }] }).includes('recent_purchase'));
   });
 
   it('notes estates of record', () => {
-    const r = eligible({ ...ownerOccupied, ownerName: 'ESTATE OF TEST OWNER' });
-    assert.ok(r.reasons.some((x) => x.code === 'estate_owner'));
-    assert.ok(!eligible({ ...ownerOccupied, ownerName: 'REAL ESTATE HOLDINGS LLC' }).reasons.some((x) => x.code === 'estate_owner'));
+    assert.ok(codes({ ...ownerOccupied, ownerName: 'ESTATE OF TEST OWNER' }).includes('estate_owner'));
+    assert.ok(!codes({ ...ownerOccupied, ownerName: 'REAL ESTATE HOLDINGS LLC' }).includes('estate_owner'));
+  });
+
+  it('leaves out buildings of 10+ units unless the profile includes them', () => {
+    const tower = { ...absenteeLongHeld, propertyUse: 'multifamily' as const, largeBuilding: true, units: 180 };
+    const r = scoreSellerOpportunity(tower, focus, AS_OF);
+    assert.equal(r.eligible, false);
+    assert.equal(eligible(tower, { ...focus, includeLargeBuildings: true }).eligible, true);
   });
 
   it('clamps to 0–100', () => {
@@ -97,7 +116,7 @@ describe('seller opportunity scoring v2', () => {
       ...ownerOccupied,
       justValue: 9_000_000,
       assessedValue: 9_000_000,
-      recentSale: { year: 2026, month: 1, price: 8_000_000, qualified: true },
+      recentSales: [{ year: 2026, month: 1, price: 8_000_000, qualified: true }],
     });
     assert.equal(r.score, 0);
   });
@@ -118,13 +137,23 @@ describe('seller opportunity scoring v2', () => {
     assert.equal(matchesPropertyFocus('condo', ['townhouse']), false);
   });
 
+  it('classifies owners of record by name only', () => {
+    assert.equal(ownerKindOf('TEST HOLDINGS LLC'), 'company');
+    assert.equal(ownerKindOf('1 SAMPLE ST L.L.C.'), 'company');
+    assert.equal(ownerKindOf('JANE TEST TRS'), 'trust');
+    assert.equal(ownerKindOf('JANE TEST REV TR'), 'trust');
+    assert.equal(ownerKindOf('EST OF JOHN TEST'), 'estate');
+    assert.equal(ownerKindOf('JOHN TEST &W JANE'), 'individual');
+    assert.equal(ownerKindOf('TRUSTCO TEST'), 'individual');
+  });
+
   it('cites the fact fields behind every reason, is deterministic and versioned', () => {
     const r = eligible(absenteeLongHeld);
     for (const reason of r.reasons) assert.ok(reason.facts.length > 0 && reason.text.length > 0);
     assert.deepEqual(eligible(absenteeLongHeld), r);
     assert.equal(r.version, SCORING_VERSION);
     assert.equal(r.confidence, 1);
-    const { justValue: _a, assessedValue: _b, ...sparse } = absenteeLongHeld;
-    assert.equal(eligible(sparse).confidence, 0.33);
+    const { justValue: _a, assessedValue: _b, priorAssessment: _c, ...sparse } = absenteeLongHeld;
+    assert.equal(eligible(sparse).confidence, 0.25);
   });
 });

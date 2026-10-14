@@ -17,6 +17,7 @@ export interface ProfileFormValues {
   propertyUses: string[];
   minValue: string;
   maxValue: string;
+  includeLargeBuildings: boolean;
 }
 
 export type ProfileFormState =
@@ -42,6 +43,7 @@ export async function saveProfileAction(_prev: ProfileFormState, form: FormData)
     propertyUses: form.getAll('propertyUses').map(String),
     minValue: text('minValue'),
     maxValue: text('maxValue'),
+    includeLargeBuildings: form.get('includeLargeBuildings') === '1',
   };
 
   try {
@@ -56,6 +58,7 @@ export async function saveProfileAction(_prev: ProfileFormState, form: FormData)
       propertyUses: values.propertyUses,
       minValue: money(values.minValue),
       maxValue: money(values.maxValue),
+      includeLargeBuildings: values.includeLargeBuildings,
     });
   } catch (e) {
     if (isServiceError(e)) return { status: 'error', message: e.message, fields: { ...e.fields }, values };

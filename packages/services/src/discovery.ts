@@ -29,6 +29,12 @@ import { type MarketKey, marketCountyCode } from './markets.ts';
  */
 export const DISCOVERY_MIN_SCORE = 55;
 export const DISCOVERY_MAX_OPPORTUNITIES = 100;
+/**
+ * Version of what the importer stores per parcel. Raising it re-imports every
+ * covered ZIP on the next run. 2: previous year's roll, both sale slots,
+ * owner kind, institutional exemptions excluded.
+ */
+export const PARCEL_IMPORT_VERSION = 2;
 /** A claim older than this is treated as abandoned (the worker crashed) and retried. */
 const STALE_CLAIM = '1 hour';
 /** A failed import is retried after this long. */
@@ -100,6 +106,7 @@ export async function coverageToImport(sql: Sql, countyCode: string, latestFile:
       OR (status = 'importing' AND started_at < now() - ${STALE_CLAIM}::interval)
       OR (status = 'failed' AND finished_at < now() - ${RETRY_FAILED_AFTER}::interval)
       OR (status = 'ready' AND source_file IS DISTINCT FROM ${latestFile})
+      OR (status = 'ready' AND import_version < ${PARCEL_IMPORT_VERSION})
     )
     ORDER BY zip
   `;
@@ -137,7 +144,7 @@ async function sourceId(db: Db): Promise<string> {
   return row.id;
 }
 
-/** Store parcels as shared public source records. Idempotent per parcel and file date. */
+/** Store parcels as shared public source records: one per parcel and file date, replaced on re-import. */
 export async function storeParcels(sql: Sql, fileDate: string, parcels: readonly StoredParcel[]): Promise<number> {
   if (parcels.length === 0) return 0;
   const src = await sourceId(sql);
@@ -152,7 +159,8 @@ export async function storeParcels(sql: Sql, fileDate: string, parcels: readonly
       INSERT INTO source_records (source_id, external_id, file_date, zip, payload)
       SELECT ${src}, x.external_id, ${fileDate}::date, x.zip, x.payload
       FROM jsonb_to_recordset(${sql.json(batch as never)}) AS x(external_id text, zip text, payload jsonb)
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (source_id, coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid), external_id, file_date)
+      DO UPDATE SET payload = EXCLUDED.payload, zip = EXCLUDED.zip, fetched_at = now()
     `;
     inserted += result.count;
   }
@@ -173,7 +181,8 @@ export async function completeCoverage(
     for (const { zip, parcelCount } of imported) {
       await tx`
         UPDATE zip_coverage SET status = 'ready', finished_at = now(), error = NULL, parcel_count = ${parcelCount},
-          source_file = ${roll.sourceFile}, roll_label = ${roll.rollLabel}, file_date = ${roll.fileDate}::date
+          source_file = ${roll.sourceFile}, roll_label = ${roll.rollLabel}, file_date = ${roll.fileDate}::date,
+          import_version = ${PARCEL_IMPORT_VERSION}
         WHERE county_code = ${countyCode} AND zip = ${zip}
       `;
       await tx`
@@ -203,7 +212,7 @@ export async function workspacesToScore(sql: Sql): Promise<string[]> {
 
 interface FocusRow {
   market: MarketKey;
-  focus: { zips?: string[]; propertyUses?: PropertyUse[]; minValue?: number; maxValue?: number };
+  focus: { zips?: string[]; propertyUses?: PropertyUse[]; minValue?: number; maxValue?: number; includeLargeBuildings?: boolean };
 }
 
 export interface ScoreSummary {
@@ -235,6 +244,7 @@ export async function scoreWorkspace(sql: Sql, workspaceId: string, asOf: Date):
       propertyUses: profile.focus.propertyUses ?? [],
       ...(profile.focus.minValue !== undefined ? { minValue: profile.focus.minValue } : {}),
       ...(profile.focus.maxValue !== undefined ? { maxValue: profile.focus.maxValue } : {}),
+      includeLargeBuildings: profile.focus.includeLargeBuildings === true,
     };
     const src = await sourceId(sql);
     const records = await sql<{ id: string; payload: StoredParcel }[]>`

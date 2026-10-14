@@ -15,6 +15,7 @@ export function profileToFormValues(p: BusinessProfile | null): ProfileFormValue
     propertyUses: p ? [...p.propertyUses] : [],
     minValue: p?.minValue != null ? usd.format(p.minValue) : '',
     maxValue: p?.maxValue != null ? usd.format(p.maxValue) : '',
+    includeLargeBuildings: p?.includeLargeBuildings ?? false,
   };
 }
 

@@ -10,7 +10,7 @@
  * Only residential parcels are kept, and only the columns GenCut uses. Owners
  * whose records are confidential (blank owner name) are dropped at import.
  */
-import type { ParcelFacts, PropertyUse } from '../opportunity/scoring.ts';
+import { type OwnerKind, type ParcelFacts, type PropertyUse, type RecentSale, ownerKindOf } from '../opportunity/scoring.ts';
 
 export const FL_DOR_NAL_SOURCE_KEY = 'fl-dor-nal';
 
@@ -93,6 +93,31 @@ export function pickRollFile(files: readonly RollFile[], countyCode: string): Ro
   return choices[0] ?? null;
 }
 
+/** The county's final roll for the year before `current`, to read last year's values. */
+export function pickPriorRollFile(files: readonly RollFile[], countyCode: string, currentYear: number): RollChoice | null {
+  const prior = pickRollFile(
+    files.filter((f) => /\bfinal\b/i.test(f.name) && f.name.includes(String(currentYear - 1))),
+    countyCode,
+  );
+  return prior && prior.year === currentYear - 1 && prior.stage === 'final' ? prior : null;
+}
+
+export interface StoredSale {
+  readonly year: number;
+  readonly month: number | null;
+  readonly price: number | null;
+  readonly qualificationCode: string;
+}
+
+/** The parcel on the previous year's final roll: only what tenure and sales need. */
+export interface PriorRoll {
+  readonly year: number;
+  readonly justValue: number | null;
+  readonly assessedValue: number | null;
+  readonly homestead: boolean;
+  readonly sales: readonly StoredSale[];
+}
+
 /** What GenCut stores per parcel (source_records.payload). Keys are stable; never add protected characteristics. */
 export interface StoredParcel {
   readonly parcelId: string;
@@ -112,12 +137,11 @@ export interface StoredParcel {
   /** Non-school assessed value: carries both the homestead and the 10% non-homestead caps. */
   readonly assessedValue: number | null;
   readonly homestead: boolean;
-  readonly sale: {
-    readonly year: number;
-    readonly month: number | null;
-    readonly price: number | null;
-    readonly qualificationCode: string;
-  } | null;
+  /** Sales on the current roll's two sale slots, newest first. */
+  readonly sales: readonly StoredSale[];
+  /** Same parcel on the previous final roll, when it was read. */
+  readonly prior: PriorRoll | null;
+  readonly ownerKind: OwnerKind;
   readonly units: number | null;
   readonly yearBuilt: number | null;
   readonly livingArea: number | null;
@@ -137,6 +161,20 @@ export function headerIndex(header: readonly string[]): Map<string, number> {
 
 export const REQUIRED_COLUMNS = ['CO_NO', 'PARCEL_ID', 'DOR_UC', 'PHY_ADDR1', 'PHY_ZIPCD', 'OWN_NAME', 'OWN_ADDR1', 'JV', 'AV_NSD', 'JV_HMSTD'];
 
+/**
+ * Exemptions that mark an institutional owner (charitable, religious,
+ * educational, hospital, government, affordable-housing and similar): DOR NAL
+ * fields EXMPT_09–21, 29, 30, 36, 37 and 42–46 (2025 NAL user's guide). Such
+ * parcels are not seller opportunities. Personal exemptions (seniors, widows,
+ * blind or disabled owners, veterans) are proxies for protected
+ * characteristics: they are deliberately never read.
+ */
+export const INSTITUTIONAL_EXEMPTIONS = [
+  'EXMPT_09', 'EXMPT_10', 'EXMPT_11', 'EXMPT_12', 'EXMPT_13', 'EXMPT_14', 'EXMPT_15', 'EXMPT_16', 'EXMPT_17',
+  'EXMPT_18', 'EXMPT_19', 'EXMPT_20', 'EXMPT_21', 'EXMPT_29', 'EXMPT_30', 'EXMPT_36', 'EXMPT_37', 'EXMPT_42',
+  'EXMPT_43', 'EXMPT_44', 'EXMPT_45', 'EXMPT_46',
+] as const;
+
 export function missingColumns(index: Map<string, number>): string[] {
   return REQUIRED_COLUMNS.filter((c) => !index.has(c));
 }
@@ -146,11 +184,36 @@ export function rowZip(fields: readonly string[], index: Map<string, number>): s
   return text(fields[index.get('PHY_ZIPCD') ?? -1]).slice(0, 5);
 }
 
+function readSales(get: (k: string) => string | undefined): StoredSale[] {
+  const sales: StoredSale[] = [];
+  for (const n of ['1', '2']) {
+    const year = int(get(`SALE_YR${n}`));
+    if (!year) continue;
+    const month = int(get(`SALE_MO${n}`));
+    sales.push({
+      year,
+      month: month && month >= 1 && month <= 12 ? month : null,
+      price: int(get(`SALE_PRC${n}`)),
+      qualificationCode: text(get(`QUAL_CD${n}`)),
+    });
+  }
+  return sales.sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0));
+}
+
+function hasInstitutionalExemption(get: (k: string) => string | undefined): boolean {
+  return INSTITUTIONAL_EXEMPTIONS.some((k) => (int(get(k)) ?? 0) > 0);
+}
+
 /**
  * Turn one NAL row into a stored parcel, or null if GenCut does not keep it:
- * non-residential, missing identity, or a confidential owner record.
+ * non-residential, missing identity, a confidential owner record, or an
+ * institutional owner.
  */
-export function nalRowToParcel(fields: readonly string[], index: Map<string, number>): StoredParcel | null {
+export function nalRowToParcel(
+  fields: readonly string[],
+  index: Map<string, number>,
+  prior: PriorRoll | null = null,
+): StoredParcel | null {
   const get = (k: string) => fields[index.get(k) ?? -1];
   const useCode = text(get('DOR_UC')).padStart(3, '0');
   if (!(useCode in USE_CODES)) return null;
@@ -158,9 +221,8 @@ export function nalRowToParcel(fields: readonly string[], index: Map<string, num
   const zip = text(get('PHY_ZIPCD')).slice(0, 5);
   const ownerName = text(get('OWN_NAME'));
   if (!parcelId || !/^\d{5}$/.test(zip) || !ownerName) return null;
+  if (hasInstitutionalExemption(get)) return null;
 
-  const saleYear = int(get('SALE_YR1'));
-  const month = int(get('SALE_MO1'));
   const hmstd = int(get('JV_HMSTD'));
   return {
     parcelId,
@@ -176,20 +238,37 @@ export function nalRowToParcel(fields: readonly string[], index: Map<string, num
       state: text(get('OWN_STATE')).toUpperCase(),
       zip: text(get('OWN_ZIPCD')).slice(0, 5),
     },
+    ownerKind: ownerKindOf(ownerName),
     justValue: int(get('JV')),
     assessedValue: int(get('AV_NSD')),
     homestead: hmstd !== null && hmstd > 0,
-    sale: saleYear
-      ? {
-          year: saleYear,
-          month: month && month >= 1 && month <= 12 ? month : null,
-          price: int(get('SALE_PRC1')),
-          qualificationCode: text(get('QUAL_CD1')),
-        }
-      : null,
+    sales: readSales(get),
+    prior,
     units: int(get('NO_RES_UNTS')),
     yearBuilt: int(get('ACT_YR_BLT')) || null,
     livingArea: int(get('TOT_LVG_AREA')) || null,
+  };
+}
+
+/** Last year's values and sales for one parcel, from the previous final roll. */
+export function nalRowToPrior(
+  fields: readonly string[],
+  index: Map<string, number>,
+): { parcelId: string; prior: PriorRoll } | null {
+  const get = (k: string) => fields[index.get(k) ?? -1];
+  const parcelId = text(get('PARCEL_ID'));
+  const year = int(get('ASMNT_YR'));
+  if (!parcelId || !year) return null;
+  const hmstd = int(get('JV_HMSTD'));
+  return {
+    parcelId,
+    prior: {
+      year,
+      justValue: int(get('JV')),
+      assessedValue: int(get('AV_NSD')),
+      homestead: hmstd !== null && hmstd > 0,
+      sales: readSales(get),
+    },
   };
 }
 
@@ -198,26 +277,54 @@ export function propertyUseOf(useCode: string): PropertyUse {
 }
 
 /**
- * DOR sale qualification codes 01–05 mark arm's-length sales; 11 and above are
- * transfers the appraiser excluded (family, corporate, nominal consideration…).
+ * DOR sale qualification codes 01–06 are qualified sales (01–02 used in ratio
+ * studies, 03–06 qualified but excluded); 11–43 are transfers the appraiser
+ * disqualified (family, corporate, nominal consideration…); 98–99 pending.
+ * Source: 2025 NAL/SDF/NAP user's guide.
  */
 export function isQualifiedSale(code: string): boolean {
-  return /^0[1-5]$/.test(code);
+  return /^0[1-6]$/.test(code);
 }
 
-/** Scoring facts for a stored parcel. */
-export function parcelFacts(p: StoredParcel): ParcelFacts {
+/** True for a building of 10 or more residential units. */
+export function isLargeBuilding(p: Pick<StoredParcel, 'useCode' | 'units'>): boolean {
+  return p.useCode === '003' || (p.units ?? 0) >= 10;
+}
+
+function toRecentSale(s: StoredSale): RecentSale {
+  return {
+    year: s.year,
+    qualified: isQualifiedSale(s.qualificationCode),
+    ...(s.month ? { month: s.month } : {}),
+    ...(s.price !== null ? { price: s.price } : {}),
+  };
+}
+
+/**
+ * Scoring facts for a stored parcel. Accepts payloads stored before v3 of the
+ * importer (one `sale`, no prior roll, no owner kind) until they are re-imported.
+ */
+export function parcelFacts(stored: StoredParcel): ParcelFacts {
+  const p = stored as StoredParcel & { sale?: StoredSale | null };
+  const current = p.sales ?? (p.sale ? [p.sale] : []);
+  const sales = [...current, ...(p.prior?.sales ?? [])]
+    .filter((s, i, all) => all.findIndex((t) => t.year === s.year && t.month === s.month && t.price === s.price) === i)
+    .sort((a, b) => b.year - a.year || (b.month ?? 0) - (a.month ?? 0))
+    .map(toRecentSale);
   return {
     parcelId: p.parcelId,
     countyCode: p.countyCode,
     situsAddress: p.situs.address,
     situsZip: p.situs.zip,
     ownerName: p.owner.name,
+    ownerKind: p.ownerKind ?? ownerKindOf(p.owner.name),
     // Line 1 is the street line; line 2 often holds a unit or a care-of name.
     ownerMailingAddress: p.owner.address1,
     ownerMailingState: p.owner.state,
     homestead: p.homestead,
     propertyUse: propertyUseOf(p.useCode),
+    largeBuilding: isLargeBuilding(p),
+    recentSales: sales,
     ...(p.situs.city ? { situsCity: p.situs.city } : {}),
     ...(p.owner.city ? { ownerMailingCity: p.owner.city } : {}),
     ...(p.owner.zip ? { ownerMailingZip: p.owner.zip } : {}),
@@ -226,15 +333,23 @@ export function parcelFacts(p: StoredParcel): ParcelFacts {
     ...(p.units ? { units: p.units } : {}),
     ...(p.yearBuilt ? { yearBuilt: p.yearBuilt } : {}),
     ...(p.livingArea ? { livingArea: p.livingArea } : {}),
-    ...(p.sale
+    ...(p.prior
       ? {
-          recentSale: {
-            year: p.sale.year,
-            qualified: isQualifiedSale(p.sale.qualificationCode),
-            ...(p.sale.month ? { month: p.sale.month } : {}),
-            ...(p.sale.price !== null ? { price: p.sale.price } : {}),
+          priorAssessment: {
+            year: p.prior.year,
+            homestead: p.prior.homestead,
+            ...(p.prior.justValue ? { justValue: p.prior.justValue } : {}),
+            ...(p.prior.assessedValue ? { assessedValue: p.prior.assessedValue } : {}),
           },
         }
       : {}),
   };
+}
+
+/** DOR use codes stored for a GenCut property type (townhouses are single-family on the roll). */
+export function useCodesFor(use: PropertyUse): string[] {
+  const target = use === 'townhouse' ? 'single_family' : use;
+  return Object.entries(USE_CODES)
+    .filter(([, u]) => u === target)
+    .map(([code]) => code);
 }

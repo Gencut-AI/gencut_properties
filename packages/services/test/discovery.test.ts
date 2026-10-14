@@ -17,7 +17,10 @@ import {
   failCoverage,
   getDiscoveryStatus,
   getOpportunity,
+  hasFilters,
   listOpportunities,
+  parseFeedFilters,
+  PARCEL_IMPORT_VERSION,
   pruneSupersededRecords,
   requestMissingDiscovery,
   saveBusinessProfile,
@@ -36,10 +39,12 @@ function parcel(n: number, over: Partial<StoredParcel> = {}): StoredParcel {
     useCode: '001',
     situs: { address: `${n} EXAMPLE DR`, city: 'AVENTURA', zip: '33180' },
     owner: { name: `TEST OWNER ${n}`, address1: `${n} EXAMPLE DR`, address2: '', city: 'AVENTURA', state: 'FL', zip: '' },
+    ownerKind: 'individual',
     justValue: 1_000_000,
     assessedValue: 950_000,
     homestead: true,
-    sale: null,
+    sales: [],
+    prior: null,
     units: 1,
     yearBuilt: 1970,
     livingArea: 2000,
@@ -50,6 +55,7 @@ const absentee = (n: number, over: Partial<StoredParcel> = {}) =>
   parcel(n, {
     homestead: false,
     owner: { name: `TEST LLC ${n}`, address1: '9 SAMPLE ST', address2: '', city: 'NEW YORK', state: 'NY', zip: '10001' },
+    ownerKind: 'company',
     assessedValue: 500_000,
     ...over,
   });
@@ -234,5 +240,63 @@ describe('discovery', () => {
     // Their own workspace id does not unlock another workspace's opportunity.
     await assert.rejects(getOpportunity(sql, stranger, theirs.workspaceId, opp.id), (e) => e instanceof ServiceError && e.code === 'not_found');
     await assert.rejects(getOpportunity(sql, owner, workspaceId, 'nope'), (e) => e instanceof ServiceError && e.code === 'not_found');
+  });
+
+  it('filters the feed by property type, owner type, value and signal', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    await saveBusinessProfile(sql, u, workspaceId, { ...profile, focusZips: ['33187'], propertyUses: ['single_family', 'multifamily'] });
+    const at = (n: number, over: Partial<StoredParcel> = {}) => absentee(n, { situs: { address: `${n} X`, city: 'A', zip: '33187' }, ...over });
+    await importZip('33187', [
+      at(41), // company, NY, single family, $1M
+      at(42, { useCode: '008', justValue: 2_500_000, assessedValue: 1_200_000 }), // small multifamily
+      at(43, { owner: { name: 'JANE TEST', address1: '5 SAMPLE RD', address2: '', city: 'MIAMI', state: 'FL', zip: '' }, ownerKind: 'individual' }),
+    ]);
+    await scoreWorkspace(sql, workspaceId, ASOF);
+    const ids = async (params: Record<string, string | string[]>) =>
+      (await listOpportunities(sql, u, workspaceId, { filters: parseFeedFilters(params) })).map((o) => o.parcelId).sort();
+    assert.deepEqual(await ids({}), ['TEST000041', 'TEST000042', 'TEST000043']);
+    assert.deepEqual(await ids({ type: 'multifamily' }), ['TEST000042']);
+    assert.deepEqual(await ids({ owner: 'individual' }), ['TEST000043']);
+    assert.deepEqual(await ids({ min: '2000000' }), ['TEST000042']);
+    assert.deepEqual(await ids({ max: '1500000', signal: 'out_of_state' }), ['TEST000041']);
+    assert.deepEqual(await ids({ signal: ['absentee', 'out_of_state'] }), ['TEST000041', 'TEST000042']);
+    // Malformed values are ignored rather than failing the page.
+    assert.deepEqual(parseFeedFilters({ type: 'castle', min: 'lots', signal: ['bogus'] }), {});
+    assert.equal(hasFilters(parseFeedFilters({ owner: 'trust' })), true);
+  });
+
+  it('leaves 10+ unit buildings out unless the profile includes them', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    const mf = { ...profile, focusZips: ['33188'], propertyUses: ['multifamily'] };
+    await saveBusinessProfile(sql, u, workspaceId, mf);
+    await importZip('33188', [
+      absentee(51, { useCode: '003', units: 180, situs: { address: '51 X', city: 'A', zip: '33188' } }),
+      absentee(52, { useCode: '008', units: 4, situs: { address: '52 X', city: 'A', zip: '33188' } }),
+    ]);
+    await scoreWorkspace(sql, workspaceId, ASOF);
+    assert.deepEqual((await listOpportunities(sql, u, workspaceId)).map((o) => o.parcelId), ['TEST000052']);
+
+    const saved = await saveBusinessProfile(sql, u, workspaceId, { ...mf, includeLargeBuildings: true });
+    assert.equal(saved.includeLargeBuildings, true);
+    assert.equal((await getDiscoveryStatus(sql, u, workspaceId)).status, 'pending', 'changing the setting re-scores');
+    await scoreWorkspace(sql, workspaceId, ASOF);
+    const feed = await listOpportunities(sql, u, workspaceId);
+    assert.deepEqual(feed.map((o) => o.parcelId).sort(), ['TEST000051', 'TEST000052']);
+    assert.equal(feed.find((o) => o.parcelId === 'TEST000051')?.largeBuilding, true);
+  });
+
+  it('replaces stored records when a ZIP is re-imported from the same file', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    await saveBusinessProfile(sql, u, workspaceId, { ...profile, focusZips: ['33189'] });
+    const p = absentee(61, { situs: { address: '61 X', city: 'A', zip: '33189' } });
+    await importZip('33189', [p]);
+    await importZip('33189', [{ ...p, justValue: 1_111_111 }]);
+    const rows = await sql<{ jv: number }[]>`SELECT (payload->>'justValue')::int AS jv FROM source_records WHERE zip = '33189'`;
+    assert.deepEqual(rows.map((r) => r.jv), [1_111_111]);
+    const [cov] = await sql<{ import_version: number }[]>`SELECT import_version FROM zip_coverage WHERE zip = '33189'`;
+    assert.equal(cov?.import_version, PARCEL_IMPORT_VERSION);
   });
 });

@@ -7,13 +7,16 @@ import { TriageButtons } from './triage-buttons.tsx';
 const SHORT_REASON: Record<string, string> = {
   absentee_owner: 'Absentee owner',
   out_of_state_owner: 'Owner out of state',
-  long_held_strong: 'Held for many years',
-  long_held: 'Long held',
+  long_held_strong: 'Long held',
+  long_held: 'Held 2+ years',
+  assessment_gap: 'Assessed below market',
   estate_owner: 'Estate',
   value_in_band: 'In your price range',
   value_out_of_band: 'Outside your price range',
   recent_purchase: 'Recently sold',
 };
+
+const OWNER_LABEL = { individual: 'Individual', company: 'Company', trust: 'Trust', estate: 'Estate' } as const;
 
 export function OpportunityCard({ o }: { o: OpportunitySummary }) {
   const chips = o.reasons.filter((r) => r.code !== 'in_focus' && SHORT_REASON[r.code]);
@@ -30,6 +33,7 @@ export function OpportunityCard({ o }: { o: OpportunitySummary }) {
           </p>
           <p className="mt-1 truncate text-sm">
             {o.ownerName}
+            {o.ownerKind !== 'individual' && <span className="text-ink-soft"> · {OWNER_LABEL[o.ownerKind]}</span>}
             {o.ownerLocation && <span className="text-ink-soft"> · mail to {o.ownerLocation}</span>}
           </p>
           {chips.length > 0 && (

@@ -3,7 +3,19 @@
  * Every opportunity carries the public record it came from, so each fact
  * shown can name its source.
  */
-import { DOR_USE_LABELS, type ScoreReason, type StoredParcel, propertyUseOf } from '@gencut/core';
+import {
+  DOR_USE_LABELS,
+  OWNER_KINDS,
+  type OwnerKind,
+  PROPERTY_USES,
+  type PropertyUse,
+  type ScoreReason,
+  type StoredParcel,
+  isLargeBuilding,
+  ownerKindOf,
+  propertyUseOf,
+  useCodesFor,
+} from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
 import type { RequestContext } from './context.ts';
@@ -19,6 +31,56 @@ export type TriageStatus = (typeof TRIAGE_STATUSES)[number];
 
 export const FEED_VIEWS = ['active', 'saved', 'dismissed'] as const;
 export type FeedView = (typeof FEED_VIEWS)[number];
+
+/** Signals the feed can filter on. `long_held` covers both strengths of the long-ownership reason. */
+export const FEED_SIGNALS = ['absentee', 'out_of_state', 'long_held', 'estate'] as const;
+export type FeedSignal = (typeof FEED_SIGNALS)[number];
+const SIGNAL_REASON_CODES: Record<FeedSignal, string[]> = {
+  absentee: ['absentee_owner'],
+  out_of_state: ['out_of_state_owner'],
+  long_held: ['long_held_strong', 'long_held'],
+  estate: ['estate_owner'],
+};
+
+export interface FeedFilters {
+  readonly propertyUse?: PropertyUse;
+  readonly ownerKind?: OwnerKind;
+  readonly minValue?: number;
+  readonly maxValue?: number;
+  readonly signals?: readonly FeedSignal[];
+}
+
+const money = z.coerce.number().int().min(0).max(1_000_000_000);
+const feedFiltersInput = z.object({
+  type: z.enum(PROPERTY_USES).optional().catch(undefined),
+  owner: z.enum(OWNER_KINDS).optional().catch(undefined),
+  min: money.optional().catch(undefined),
+  max: money.optional().catch(undefined),
+  signal: z
+    .union([z.enum(FEED_SIGNALS), z.array(z.string())])
+    .optional()
+    .transform((v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v]).filter((x): x is FeedSignal => (FEED_SIGNALS as readonly string[]).includes(x))))
+    .catch([]),
+});
+
+/**
+ * Read feed filters from query parameters (`type`, `owner`, `min`, `max`,
+ * `signal` repeated). Unknown or malformed values are ignored, never errors.
+ */
+export function parseFeedFilters(params: Record<string, string | string[] | undefined>): FeedFilters {
+  const v = feedFiltersInput.parse({ ...params, min: params.min || undefined, max: params.max || undefined });
+  return {
+    ...(v.type ? { propertyUse: v.type } : {}),
+    ...(v.owner ? { ownerKind: v.owner } : {}),
+    ...(v.min !== undefined ? { minValue: v.min } : {}),
+    ...(v.max !== undefined ? { maxValue: v.max } : {}),
+    ...(v.signal.length ? { signals: [...new Set(v.signal)] } : {}),
+  };
+}
+
+export function hasFilters(f: FeedFilters): boolean {
+  return Boolean(f.propertyUse || f.ownerKind || f.minValue !== undefined || f.maxValue !== undefined || f.signals?.length);
+}
 
 export interface OpportunitySource {
   readonly name: string;
@@ -45,7 +107,9 @@ export interface OpportunitySummary {
   readonly propertyUse: ReturnType<typeof propertyUseOf>;
   readonly justValue: number | null;
   readonly ownerName: string;
+  readonly ownerKind: OwnerKind;
   readonly ownerLocation: string;
+  readonly largeBuilding: boolean;
 }
 
 export interface OpportunityDetail extends OpportunitySummary {
@@ -88,7 +152,9 @@ function summary(r: Row): OpportunitySummary {
     propertyUse: propertyUseOf(p.useCode),
     justValue: p.justValue,
     ownerName: p.owner.name,
+    ownerKind: p.ownerKind ?? ownerKindOf(p.owner.name),
     ownerLocation: [p.owner.city, p.owner.state].filter(Boolean).join(', '),
+    largeBuilding: isLargeBuilding(p),
   };
 }
 
@@ -110,18 +176,33 @@ const VIEW_STATUSES: Record<FeedView, OpportunityStatus[]> = {
   dismissed: ['dismissed'],
 };
 
+function filterConditions(db: Db, f: FeedFilters) {
+  const conds = [];
+  if (f.propertyUse) conds.push(db`r.payload->>'useCode' = ANY(${useCodesFor(f.propertyUse)}::text[])`);
+  if (f.ownerKind) conds.push(db`r.payload->>'ownerKind' = ${f.ownerKind}`);
+  if (f.minValue !== undefined) conds.push(db`(r.payload->>'justValue')::bigint >= ${f.minValue}`);
+  if (f.maxValue !== undefined) conds.push(db`(r.payload->>'justValue')::bigint <= ${f.maxValue}`);
+  for (const signal of f.signals ?? []) {
+    const codes = SIGNAL_REASON_CODES[signal];
+    conds.push(db`EXISTS (SELECT 1 FROM jsonb_array_elements(o.reasons) x WHERE x->>'code' = ANY(${codes}::text[]))`);
+  }
+  return conds;
+}
+
 export async function listOpportunities(
   db: Db,
   ctx: RequestContext,
   workspaceId: string,
-  options: { view?: FeedView; limit?: number } = {},
+  options: { view?: FeedView; limit?: number; filters?: FeedFilters } = {},
 ): Promise<OpportunitySummary[]> {
   await requireMembershipFor(db, ctx, workspaceId);
   const statuses = VIEW_STATUSES[options.view ?? 'active'];
   const limit = Math.min(Math.max(options.limit ?? 100, 1), 200);
+  const where = [db`o.workspace_id = ${workspaceId}`, db`o.status = ANY(${statuses}::text[])`, ...filterConditions(db, options.filters ?? {})]
+    .reduce((a, c) => db`${a} AND ${c}`);
   const rows = await db<Row[]>`
     ${select(db)}
-    WHERE o.workspace_id = ${workspaceId} AND o.status = ANY(${statuses}::text[])
+    WHERE ${where}
     ORDER BY o.score DESC, o.confidence DESC, o.subject_key
     LIMIT ${limit}
   `;

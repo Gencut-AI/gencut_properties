@@ -24,7 +24,10 @@ const row = (id: string, zip: string, absentee: boolean, use = '001') => [
   `${id} EXAMPLE DR`, 'AVENTURA', zip,
 ];
 
-function fakeSource(rows: string[][], opts: { header?: string[]; file?: string; fail?: boolean } = {}): RollSource & { reads: number } {
+function fakeSource(
+  rows: string[][],
+  opts: { header?: string[]; file?: string; fail?: boolean; prior?: string[][] } = {},
+): RollSource & { reads: number } {
   const choice: RollChoice = {
     file: { name: opts.file ?? 'Dade 23 Preliminary NAL 2026.zip', serverRelativeUrl: '/x', length: 1, lastModified: '2026-07-27T00:00:00Z' },
     year: 2026,
@@ -32,13 +35,28 @@ function fakeSource(rows: string[][], opts: { header?: string[]; file?: string; 
     label: '2026 preliminary roll',
     fileDate: '2026-07-27',
   };
+  const priorChoice: RollChoice = {
+    ...choice,
+    file: { ...choice.file, name: 'Dade 23 Final NAL 2025.zip' },
+    year: 2025,
+    stage: 'final',
+    label: '2025 final roll',
+  };
   const source = {
     reads: 0,
     async latest(county: string) {
       if (opts.fail) throw new Error('connection refused');
       return county === '23' ? choice : null;
     },
-    async rows(_c: RollChoice, onRow: (f: string[]) => void) {
+    async previous() {
+      return opts.prior ? priorChoice : null;
+    },
+    async rows(c: RollChoice, onRow: (f: string[]) => void) {
+      if (c.year === 2025) {
+        onRow(opts.header ?? HEADER);
+        for (const r of opts.prior ?? []) onRow(r);
+        return;
+      }
       source.reads++;
       onRow(opts.header ?? HEADER);
       for (const r of rows) onRow(r);
@@ -119,5 +137,34 @@ describe('discovery job', () => {
     // ZIPs imported earlier keep their data through an outage.
     const [ready] = await sql<{ status: string }[]>`SELECT status FROM zip_coverage WHERE zip = '33180'`;
     assert.equal(ready?.status, 'ready');
+  });
+
+  it('uses last year\'s roll to tell long ownership from a one-year revaluation, and skips institutions', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    await saveBusinessProfile(sql, u, workspaceId, profile(['33170']));
+    const header = [...HEADER, 'EXMPT_09'];
+    const withExempt = (r: string[], exempt = '') => [...r, exempt];
+    const priorRow = (id: string, jv: string, av: string) => {
+      const r = withExempt(row(id, '33170', true));
+      r[2] = '2025';
+      r[4] = jv;
+      r[6] = av;
+      return r;
+    };
+    const run = await runDiscovery({
+      sql,
+      source: fakeSource(
+        [withExempt(row('H1', '33170', true)), withExempt(row('R1', '33170', true)), withExempt(row('X1', '33170', true), '400000')],
+        { header, prior: [priorRow('H1', '900000', '450000'), priorRow('R1', '700000', '700000')] },
+      ),
+      asOf: ASOF,
+    });
+    assert.equal(hasErrors(run), false);
+    assert.equal(run.imports[0]?.parcels, 2, 'the religious-exempt parcel is not imported');
+    const feed = await listOpportunities(sql, u, workspaceId);
+    const byId = new Map(feed.map((o) => [o.parcelId, o.reasons.map((r) => r.code)]));
+    assert.ok(byId.get('H1')?.includes('long_held_strong'), 'gap in both rolls');
+    assert.ok(!byId.get('R1')?.some((c) => c.startsWith('long_held') || c === 'assessment_gap'), 'gap only this year');
   });
 });

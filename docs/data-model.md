@@ -22,9 +22,11 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 - `data_sources` — each source with kind, terms URL and documented restrictions/costs.
 - `source_records` — records with file date, situs `zip` and payload (public: shared;
   uploads: per workspace). For the FL DOR roll, `external_id` is `<county>:<parcel>` and
-  the payload is a `StoredParcel` (core), not the raw row.
+  the payload is a `StoredParcel` (core), not the raw row: current values, both sale slots,
+  owner kind and the same parcel's values on the previous final roll.
 - `zip_coverage` — per county ZIP: import status (`pending` → `importing` → `ready` /
-  `failed`), the roll file and its date, parcel count.
+  `failed`), the roll file and its date, parcel count, and `import_version`. Raising
+  `PARCEL_IMPORT_VERSION` in services re-imports every ZIP.
 - `workspace_discovery` — per workspace: scoring status, counts considered / qualified /
   kept, scoring version.
 - `prospects` — people a workspace may contact, with `contact_basis`.

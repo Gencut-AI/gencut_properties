@@ -93,3 +93,20 @@ non-homestead property and would hide the gap. The bar of 40 qualified 42% of 33
 parcels in the dry run, which is not a useful filter.
 **Revisit if:** recorded campaign outcomes (M6) show which signals predict listings.
 
+## D-011 · 2026-10-14 · Scoring v3: tenure only from two rolls; institutions and large buildings out
+
+**Decision:**
+- Import the previous year's final roll alongside the current one, and claim long ownership only
+  when the assessment gap appears on both.
+- Skip parcels with institutional exemptions, and never read personal exemptions.
+- Leave 10+ unit buildings out unless the profile includes them.
+- Keep investor-owned parcels, with filters for owner type and signals.
+
+**Why:** a cross-check against the Miami-Dade Property Appraiser
+(`docs/validation/2026-10-14-property-appraiser-crosscheck.md`) found the facts right for 10 of
+10 parcels, but one false tenure claim caused by a one-year revaluation, and one religious owner.
+Personal exemptions (seniors, disability, widows, veterans) would be protected-class proxies.
+
+**Revisit if:** a licensed deed-history source (Clerk records, the Property Appraiser's bulk data)
+can give exact purchase dates.
+

@@ -29,7 +29,10 @@ handling against the published text before enabling texts.
 | Florida DOR NAL assessment roll | Public record, Fla. Stat. ch. 119; free from the DOR data portal | Residential parcels in requested ZIPs: owner of record, tax mailing address, situs, values, homestead flag, last roll sale | Discovery and research only. No phone or email; contact needs consent or another lawful basis per channel (gate) |
 
 Owner records made confidential under Fla. Stat. 119.071 appear without a name and are not
-imported. Scoring uses property facts only — never protected characteristics or proxies.
+imported. Institutional owners (charitable, religious, educational, government and similar
+exemptions) are not imported. Scoring uses property facts only — never protected
+characteristics or proxies. The roll's personal exemptions (seniors, widows, blind or disabled
+owners, veterans) are never read. See `docs/scoring.md`.
 
 ## Sources
 

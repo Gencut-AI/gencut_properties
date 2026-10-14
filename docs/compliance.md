@@ -22,6 +22,23 @@ Pending regulatory change: the FCC adopted a revised TCPA consent-revocation ord
 30 Sep 2026, effective 30 days after Federal Register publication. Review the opt-out
 handling against the published text before enabling texts.
 
+## Generated copy
+
+Campaign drafts must pass the checks in `packages/core/src/campaign/draft.ts` before they are
+shown, and again after every edit:
+
+- **Grounding:** every figure and year must come from the facts the writer was given.
+- **Fair housing:** no words for protected characteristics or their proxies (families,
+  children, seniors, religion, national origin, disability…).
+- **Sensitivity:** no death, probate, divorce, debt, foreclosure or hardship language.
+- **How the owner was found:** nothing about absentee or out-of-state ownership, homestead,
+  assessments or records.
+- **Pressure:** no guarantees and no "act now".
+- **Florida advertising:** the brokerage name is in the signature (Fla. Admin. Code 61J2-10.025).
+
+The writer is never given the owner's mailing location, the roll value, sale history or the
+signals that selected the owner. Nothing is sent: letters stay outreach actions in state DRAFT.
+
 ## Data sources
 
 | Source | Basis | What GenCut keeps | What it authorizes |

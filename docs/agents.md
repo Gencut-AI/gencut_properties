@@ -37,5 +37,8 @@ changes to prompts, scoring weights or strategies become **experiments** in the 
 (hypothesis, change, baseline, metrics, result, confidence, deployment status) and reach
 production only after human approval.
 
-Status: contracts and runtime arrive in M3. Scoring v1 (deterministic) exists now in
-`packages/core/src/opportunity/scoring.ts`.
+## Status (14 Oct 2026)
+
+- **Scout:** deterministic scoring, `seller-v3` (`packages/core/src/opportunity/scoring.ts`, `docs/scoring.md`).
+- **Copy + QC (campaign drafts):** one model call through the ModelRouter (`packages/services/src/models.ts`), with the prompt and the QC checks in `packages/core/src/campaign/draft.ts`. QC is deterministic: grounding, fair housing, sensitivity and brokerage name. Every call is logged in `model_runs` with cost.
+- Director, Research, Strategy as separate agents, and the Film Crew: not built yet.

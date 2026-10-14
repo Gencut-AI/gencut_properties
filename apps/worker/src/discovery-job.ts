@@ -28,6 +28,7 @@ import {
   requestMissingDiscovery,
   scoreWorkspace,
   storeParcels,
+  storedPriorRolls,
   workspacesToScore,
 } from '@gencut/services';
 import type { RollSource } from './dor.ts';
@@ -78,7 +79,11 @@ export async function runDiscovery(opts: {
     await claimCoverage(sql, county, zips);
     try {
       const wanted = new Set(zips);
-      const prior = await readPriorRoll(source, choice, wanted, county, log);
+      let prior = await readPriorRoll(source, choice, wanted, county, log);
+      if (prior.size === 0) {
+        prior = await storedPriorRolls(sql, county, zips, choice.year - 1);
+        if (prior.size) log(`county ${county}: using ${prior.size} stored records from the ${choice.year - 1} roll as the previous roll`);
+      }
       const byZip = new Map<string, StoredParcel[]>(zips.map((z) => [z, []]));
       let index: Map<string, number> | null = null;
       let rows = 0;

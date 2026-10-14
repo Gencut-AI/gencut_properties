@@ -10,6 +10,7 @@
 import {
   type AgentFocus,
   FL_DOR_NAL_SOURCE_KEY,
+  type PriorRoll,
   type PropertyUse,
   type ScoreReason,
   SCORING_VERSION,
@@ -165,6 +166,32 @@ export async function storeParcels(sql: Sql, fileDate: string, parcels: readonly
     inserted += result.count;
   }
   return inserted;
+}
+
+/**
+ * Last year's values for parcels in these ZIPs, from records GenCut stored when
+ * it imported last year's roll. DOR publishes only the current year's rolls,
+ * so GenCut's own history is how a second roll becomes available.
+ */
+export async function storedPriorRolls(
+  sql: Sql,
+  countyCode: string,
+  zips: readonly string[],
+  year: number,
+): Promise<Map<string, PriorRoll>> {
+  const src = await sourceId(sql);
+  const rows = await sql<{ payload: StoredParcel }[]>`
+    SELECT DISTINCT ON (r.external_id) r.payload FROM source_records r
+    WHERE r.source_id = ${src} AND r.workspace_id IS NULL AND r.zip = ANY(${zips as string[]}::text[])
+      AND r.external_id LIKE ${`${countyCode}:%`} AND (r.payload->>'assessmentYear')::int = ${year}
+    ORDER BY r.external_id, r.file_date DESC
+  `;
+  return new Map(
+    rows.map(({ payload: p }) => [
+      p.parcelId,
+      { year, justValue: p.justValue, assessedValue: p.assessedValue, homestead: p.homestead, sales: p.sales ?? [] },
+    ]),
+  );
 }
 
 /**

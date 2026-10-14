@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { createDb, ensureWorkspace, listOpportunities, saveBusinessProfile } from '@gencut/services';
 import { migrateUp } from '../../../packages/db/src/migrate.ts';
 import { hasErrors, runDiscovery } from './discovery-job.ts';
-import { DorRollSource, listFolder } from './dor.ts';
+import { DorRollSource } from './dor.ts';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -34,16 +34,6 @@ try {
     focusZips: zips,
     propertyUses: ['single_family', 'condo', 'multifamily'],
   });
-  // Which roll files DOR has published, to diagnose a missing current or previous roll.
-  for (const folder of ['2026F', '2026P', '2025F', '2025P']) {
-    const names = (await listFolder(folder).catch((e: unknown) => [{ name: `error: ${String(e)}` }])).map((f) => f.name);
-    notice(`folder ${folder}`, `${names.length} files; Dade: ${names.filter((n) => /dade/i.test(n)).join(' | ') || 'none'}`);
-  }
-  for (const path of ['/property/dataportal/Documents/PTO Data Portal/~Public Records', '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/~NAL-EDR', '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/SDF']) {
-    const url = `https://floridarevenue.com/property/dataportal/_api/web/GetFolderByServerRelativeUrl('${encodeURIComponent(path)}')/Folders?$select=Name,ItemCount`;
-    const body = await fetch(url, { headers: { accept: 'application/json;odata=nometadata' } }).then(async (r) => (r.ok ? ((await r.json()) as { value?: { Name: string; ItemCount: number }[] }).value ?? [] : [{ Name: `HTTP ${r.status}`, ItemCount: 0 }]));
-    notice(`subfolders ${path.split('/').at(-1)}`, body.map((f) => `${f.Name}(${f.ItemCount})`).join(' '));
-  }
   const started = Date.now();
   // Job log lines carry counts and codes only, never names or addresses, so they can be annotations.
   const run = await runDiscovery({ sql, source: new DorRollSource(), asOf: new Date(), log: (l) => notice('log', l) });

@@ -26,14 +26,15 @@ const row = (id: string, zip: string, absentee: boolean, use = '001') => [
 
 function fakeSource(
   rows: string[][],
-  opts: { header?: string[]; file?: string; fail?: boolean; prior?: string[][] } = {},
+  opts: { header?: string[]; file?: string; fail?: boolean; prior?: string[][]; year?: number } = {},
 ): RollSource & { reads: number } {
+  const year = opts.year ?? 2026;
   const choice: RollChoice = {
-    file: { name: opts.file ?? 'Dade 23 Preliminary NAL 2026.zip', serverRelativeUrl: '/x', length: 1, lastModified: '2026-07-27T00:00:00Z' },
-    year: 2026,
+    file: { name: opts.file ?? `Dade 23 Preliminary NAL ${year}.zip`, serverRelativeUrl: '/x', length: 1, lastModified: `${year}-07-27T00:00:00Z` },
+    year,
     stage: 'preliminary',
-    label: '2026 preliminary roll',
-    fileDate: '2026-07-27',
+    label: `${year} preliminary roll`,
+    fileDate: `${year}-07-27`,
   };
   const priorChoice: RollChoice = {
     ...choice,
@@ -52,7 +53,7 @@ function fakeSource(
       return opts.prior ? priorChoice : null;
     },
     async rows(c: RollChoice, onRow: (f: string[]) => void) {
-      if (c.year === 2025) {
+      if (c !== choice) {
         onRow(opts.header ?? HEADER);
         for (const r of opts.prior ?? []) onRow(r);
         return;
@@ -166,5 +167,26 @@ describe('discovery job', () => {
     const byId = new Map(feed.map((o) => [o.parcelId, o.reasons.map((r) => r.code)]));
     assert.ok(byId.get('H1')?.includes('long_held_strong'), 'gap in both rolls');
     assert.ok(!byId.get('R1')?.some((c) => c.startsWith('long_held') || c === 'assessment_gap'), 'gap only this year');
+  });
+
+  it('uses its own stored copy of last year\'s roll when DOR no longer publishes it', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    await saveBusinessProfile(sql, u, workspaceId, profile(['33171']));
+    const asYear = (r: string[], y: string, jv: string, av: string) => {
+      const c = [...r];
+      c[2] = y;
+      c[4] = jv;
+      c[6] = av;
+      return c;
+    };
+    // Last year: GenCut imports the 2025 roll as the current roll.
+    await runDiscovery({ sql, source: fakeSource([asYear(row('S1', '33171', true), '2025', '900000', '450000')], { year: 2025 }), asOf: ASOF });
+    // This year: DOR offers only the 2026 roll; the 2025 values come from GenCut's own records.
+    const lines: string[] = [];
+    await runDiscovery({ sql, source: fakeSource([row('S1', '33171', true)]), asOf: ASOF, log: (l) => lines.push(l) });
+    assert.ok(lines.some((l) => l.includes('stored records from the 2025 roll')));
+    const [opp] = await listOpportunities(sql, u, workspaceId);
+    assert.ok(opp?.reasons.some((r) => r.code === 'long_held_strong'), JSON.stringify(opp?.reasons.map((r) => r.code)));
   });
 });

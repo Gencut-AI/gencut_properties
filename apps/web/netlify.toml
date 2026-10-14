@@ -17,3 +17,9 @@
 # the base directory, like `publish`.
 [functions]
   directory = "apps/web/netlify/functions"
+
+# Bundle the drafting function with everything it imports: it imports GenCut's
+# workspace packages as TypeScript source, which only a bundler resolves.
+# Scoped to this function so the Next.js server keeps Netlify's own packaging.
+[functions."generate-campaign-background"]
+  node_bundler = "esbuild"

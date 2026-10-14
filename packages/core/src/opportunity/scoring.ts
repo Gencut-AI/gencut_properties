@@ -127,7 +127,8 @@ export function matchesPropertyFocus(use: PropertyUse, focus: readonly PropertyU
   return focus.includes(use) || (use === 'single_family' && focus.includes('townhouse'));
 }
 
-const ESTATE = /\b(ESTATE OF|EST OF)\b|\bESTATE$|\bEST$/;
+// A life estate (LIFE EST, LE) is a living owner's interest, not a deceased owner's estate.
+const ESTATE = /\b(ESTATE OF|EST OF)\b|(?<!LIFE )\bESTATE$/;
 const COMPANY =
   /\b(LLC|L L C|INC|CORP|CORPORATION|COMPANY|LTD|LP|LLP|PLLC|HOLDINGS?|PROPERT(Y|IES)|INVESTMENTS?|GROUP|PARTNERS(HIP)?|ASSOC(IATION)?|ENTERPRISES?|REALTY|DEVELOPMENT|VENTURES?|FUND|BANK|MANAGEMENT|CAPITAL|TRUST CO|CONDOMINIUM|ASSN)\b/;
 const TRUST = /\b(TRUST|TRUSTS|TR|TRS|TRUSTEE|TRUSTEES|TRSTEE)\b/;

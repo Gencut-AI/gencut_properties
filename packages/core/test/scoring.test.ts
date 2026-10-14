@@ -143,6 +143,9 @@ describe('seller opportunity scoring v3', () => {
     assert.equal(ownerKindOf('JANE TEST TRS'), 'trust');
     assert.equal(ownerKindOf('JANE TEST REV TR'), 'trust');
     assert.equal(ownerKindOf('EST OF JOHN TEST'), 'estate');
+    assert.equal(ownerKindOf('JOHN TEST ESTATE'), 'estate');
+    assert.notEqual(ownerKindOf('JANE TEST LIFE ESTATE'), 'estate');
+    assert.notEqual(ownerKindOf('JANE TEST LIFE EST'), 'estate');
     assert.equal(ownerKindOf('JOHN TEST &W JANE'), 'individual');
     assert.equal(ownerKindOf('TRUSTCO TEST'), 'individual');
   });

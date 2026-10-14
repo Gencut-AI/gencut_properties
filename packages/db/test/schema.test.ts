@@ -194,6 +194,29 @@ describe('schema matches the domain model', () => {
     expectSqlError(db, `UPDATE workspace_discovery SET status = 'done' WHERE workspace_id = '${workspace}'`);
   });
 
+  it('allows one draft being written per opportunity, and constrains model runs and outcomes', () => {
+    const opp = db.query(`SELECT id FROM opportunities WHERE workspace_id = '${workspace}' LIMIT 1`);
+    assert.ok(opp, 'an opportunity from the earlier test');
+    const draft = (status: string) =>
+      `INSERT INTO campaigns (workspace_id, opportunity_id, title, objective, status) VALUES ('${workspace}', '${opp}', 't', 'o', '${status}') RETURNING id`;
+    db.query(draft('generating'));
+    expectSqlError(db, draft('generating'));
+    db.query(draft('review'));
+    expectSqlError(
+      db,
+      `INSERT INTO model_runs (workspace_id, purpose, role, provider, model, prompt_version, status) VALUES ('${workspace}', 'x', 'genius', 'p', 'm', 'v', 'ok')`,
+    );
+    expectSqlError(
+      db,
+      `INSERT INTO model_runs (workspace_id, purpose, role, provider, model, prompt_version, status, cost_usd) VALUES ('${workspace}', 'x', 'fast', 'p', 'm', 'v', 'ok', -1)`,
+    );
+    const outcome = (o: string) =>
+      `INSERT INTO opportunity_outcomes (workspace_id, opportunity_id, outcome, score, scoring_version, occurred_on, recorded_by)
+       VALUES ('${workspace}', '${opp}', '${o}', 60, 'seller-v3', '2026-10-01', '${USER}')`;
+    db.query(outcome('listing'));
+    expectSqlError(db, outcome('sold'));
+  });
+
   it('enables row-level security on every table, so the public Data API sees nothing', () => {
     const open = db.query(
       `SELECT string_agg(c.relname, ',') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

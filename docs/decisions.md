@@ -93,3 +93,37 @@ non-homestead property and would hide the gap. The bar of 40 qualified 42% of 33
 parcels in the dry run, which is not a useful filter.
 **Revisit if:** recorded campaign outcomes (M6) show which signals predict listings.
 
+## D-011 · 2026-10-14 · Scoring v3: tenure only from two rolls; institutions and large buildings out
+
+**Decision:**
+- Claim long ownership only when the assessment gap appears on two consecutive rolls. DOR
+  publishes only the current year's rolls, so the previous roll is GenCut's own stored import.
+- Skip parcels with institutional exemptions, and never read personal exemptions.
+- Leave 10+ unit buildings out unless the profile includes them.
+- Keep investor-owned parcels, with filters for owner type and signals.
+
+**Why:** a cross-check against the Miami-Dade Property Appraiser
+(`docs/validation/2026-10-14-property-appraiser-crosscheck.md`) found the facts right for 10 of
+10 parcels, but one false tenure claim caused by a one-year revaluation, and one religious owner.
+Personal exemptions (seniors, disability, widows, veterans) would be protected-class proxies.
+
+**Revisit if:** a licensed deed-history source (Clerk records, the Property Appraiser's bulk data)
+can give exact purchase dates.
+
+## D-012 · 2026-10-14 · Campaign drafts: one model call, deterministic checks, background function
+
+**Decision:**
+- A draft is one call to the `creative` role. The router maps it to Anthropic Sonnet 5.5 by default, and `GENCUT_MODEL_<ROLE>` overrides it.
+- The reply must be JSON, and deterministic checks in core decide whether it may be shown:
+  - every figure must match a provided fact;
+  - no fair-housing, hardship, how-we-found-you or pressure wording;
+  - the brokerage name is in the signature.
+- A failing draft gets one retry that lists the problems; after that it is marked failed with the reasons.
+- Every call is recorded in `model_runs` with provider, model, tokens, cost, latency, prompt version and the fact keys used.
+- Drafting runs in a Netlify background function (Free plan; up to 15 minutes), started by the server action, because normal requests time out before a draft finishes.
+- The letter is stored as one outreach action in state DRAFT. Approval and sending come later, through the compliance gate.
+
+**Why:** deterministic checks are free, testable and auditable, unlike a second "checker" model. The facts given to the writer exclude how the owner was found, the roll value and sale history, so the letter cannot reveal them. Netlify's normal function limit is shorter than a typical draft.
+
+**Revisit if:** drafts often fail the checks (tune the prompt or the lists), or a second channel (email) needs its own template rules.
+

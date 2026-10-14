@@ -86,6 +86,8 @@ export const businessProfileInput = z
     propertyUses: z.array(z.enum(PROPERTY_USES)).min(1, 'Choose at least one property type.'),
     minValue: z.number().int().min(0).max(1_000_000_000).optional(),
     maxValue: z.number().int().min(0).max(1_000_000_000).optional(),
+    /** Show buildings of 10 or more units. Off by default for residential agents. */
+    includeLargeBuildings: z.boolean().optional(),
   })
   .refine((v) => v.minValue === undefined || v.maxValue === undefined || v.minValue <= v.maxValue, {
     message: 'The minimum price is above the maximum.',
@@ -112,6 +114,7 @@ export interface BusinessProfile {
   readonly propertyUses: readonly (typeof PROPERTY_USES)[number][];
   readonly minValue: number | null;
   readonly maxValue: number | null;
+  readonly includeLargeBuildings: boolean;
   readonly updatedAt: Date;
 }
 
@@ -123,7 +126,13 @@ interface ProfileRow {
   office_address: string | null;
   market: MarketKey;
   specialty: string | null;
-  focus: { zips?: string[]; propertyUses?: BusinessProfile['propertyUses'][number][]; minValue?: number; maxValue?: number };
+  focus: {
+    zips?: string[];
+    propertyUses?: BusinessProfile['propertyUses'][number][];
+    minValue?: number;
+    maxValue?: number;
+    includeLargeBuildings?: boolean;
+  };
   updated_at: Date;
 }
 
@@ -140,6 +149,7 @@ function toProfile(r: ProfileRow): BusinessProfile {
     propertyUses: r.focus.propertyUses ?? [],
     minValue: r.focus.minValue ?? null,
     maxValue: r.focus.maxValue ?? null,
+    includeLargeBuildings: r.focus.includeLargeBuildings === true,
     updatedAt: r.updated_at,
   };
 }
@@ -172,6 +182,7 @@ export async function saveBusinessProfile(
     propertyUses: [...new Set(v.propertyUses)],
     ...(v.minValue !== undefined ? { minValue: v.minValue } : {}),
     ...(v.maxValue !== undefined ? { maxValue: v.maxValue } : {}),
+    includeLargeBuildings: v.includeLargeBuildings === true,
   };
 
   return (await sql.begin(async (tx) => {
@@ -192,7 +203,7 @@ export async function saveBusinessProfile(
     const after = toProfile(row);
     const prior = before ? toProfile(before) : null;
     const focusChanged =
-      !prior || ['market', 'focusZips', 'propertyUses', 'minValue', 'maxValue'].some((k) => changedFields(prior, after).includes(k));
+      !prior || ['market', 'focusZips', 'propertyUses', 'minValue', 'maxValue', 'includeLargeBuildings'].some((k) => changedFields(prior, after).includes(k));
     if (focusChanged) await requestDiscovery(tx, workspaceId, after.market, after.focusZips);
     await recordAudit(tx, {
       workspaceId,
@@ -209,7 +220,7 @@ export async function saveBusinessProfile(
 }
 
 function changedFields(a: BusinessProfile, b: BusinessProfile): string[] {
-  const keys = ['licenseeName', 'brokerageName', 'licenseNumber', 'officeAddress', 'market', 'specialty', 'focusZips', 'propertyUses', 'minValue', 'maxValue'] as const;
+  const keys = ['licenseeName', 'brokerageName', 'licenseNumber', 'officeAddress', 'market', 'specialty', 'focusZips', 'propertyUses', 'minValue', 'maxValue', 'includeLargeBuildings'] as const;
   return keys.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
 }
 

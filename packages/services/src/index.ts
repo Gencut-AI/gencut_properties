@@ -7,3 +7,6 @@ export * from './membership.ts';
 export * from './accounts.ts';
 export * from './discovery.ts';
 export * from './opportunities.ts';
+export * from './models.ts';
+export * from './campaigns.ts';
+export * from './outcomes.ts';

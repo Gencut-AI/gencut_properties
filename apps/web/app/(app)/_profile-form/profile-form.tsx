@@ -144,6 +144,13 @@ export function ProfileForm({
             <input id="maxValue" name="maxValue" inputMode="numeric" placeholder="$5,000,000" defaultValue={v.maxValue} className={fieldClass} {...aria('maxValue')} />
           </Field>
         </div>
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 text-[0.95rem]">
+          <input type="checkbox" name="includeLargeBuildings" value="1" defaultChecked={v.includeLargeBuildings} className="mt-1 size-4 accent-[#0f6e73]" />
+          <span>
+            Include buildings of 10 or more units
+            <span className="block text-sm text-ink-soft">Off by default: whole apartment buildings are rarely residential listings.</span>
+          </span>
+        </label>
       </fieldset>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-glass-deep bg-paper/95 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0">

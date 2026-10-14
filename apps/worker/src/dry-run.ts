@@ -35,7 +35,8 @@ try {
     propertyUses: ['single_family', 'condo', 'multifamily'],
   });
   const started = Date.now();
-  const run = await runDiscovery({ sql, source: new DorRollSource(), asOf: new Date(), log: (l) => console.log(l) });
+  // Job log lines carry counts and codes only, never names or addresses, so they can be annotations.
+  const run = await runDiscovery({ sql, source: new DorRollSource(), asOf: new Date(), log: (l) => notice('log', l) });
   notice('run', `${((Date.now() - started) / 1000).toFixed(0)}s; imports=${JSON.stringify(run.imports)} scored=${JSON.stringify(run.scored.map((s) => ({ kept: s.kept, error: s.error })))}`);
 
   const [d] = await sql<{ parcels_considered: number; parcels_qualified: number; opportunity_count: number }[]>`

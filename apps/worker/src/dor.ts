@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
-import { type RollChoice, type RollFile, createCsvParser, pickRollFile, rollFolders } from '@gencut/core';
+import { FL_COUNTIES, type RollChoice, type RollFile, createCsvParser, pickPriorRollFile, pickRollFile, rollFolders } from '@gencut/core';
 
 export const DOR_ORIGIN = 'https://floridarevenue.com';
 const NAL_ROOT = '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data Files/NAL';
@@ -21,6 +21,8 @@ const NAL_ROOT = '/property/dataportal/Documents/PTO Data Portal/Tax Roll Data F
 export interface RollSource {
   /** The newest roll file for the county, or null if DOR has none published. */
   latest(countyCode: string, asOf: Date): Promise<RollChoice | null>;
+  /** The county's final roll for the year before `current`, or null if not published. */
+  previous(current: RollChoice): Promise<RollChoice | null>;
   /** Stream the roll's CSV records, header first. */
   rows(choice: RollChoice, onRow: (fields: string[]) => void): Promise<void>;
 }
@@ -117,6 +119,12 @@ export async function streamZippedCsv(zipPath: string, onRow: (fields: string[])
   });
 }
 
+/** County code of a roll file, from its name. */
+function countyOf(fileName: string): string {
+  const n = fileName.toLowerCase();
+  return FL_COUNTIES.find((c) => n.startsWith(c.filePrefix))?.code ?? '';
+}
+
 export class DorRollSource implements RollSource {
   private readonly fetchImpl: Fetch;
   constructor(fetchImpl: Fetch = fetch) {
@@ -132,6 +140,11 @@ export class DorRollSource implements RollSource {
       if (choice) return choice;
     }
     return null;
+  }
+
+  async previous(current: RollChoice): Promise<RollChoice | null> {
+    const files = await listFolder(`${current.year - 1}F`, this.fetchImpl);
+    return pickPriorRollFile(files, countyOf(current.file.name), current.year);
   }
 
   async rows(choice: RollChoice, onRow: (fields: string[]) => void): Promise<void> {

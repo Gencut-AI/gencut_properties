@@ -5,11 +5,12 @@ import { requireSession } from '../../lib/session.ts';
 // Every signed-in screen depends on the request's session; never prerender.
 export const dynamic = 'force-dynamic';
 
-// Only screens that exist are linked. Campaigns and Pipeline join the
-// navigation in the milestones that build them.
+// Only screens that exist are linked. Pipeline joins the navigation in the
+// milestone that builds it.
 const NAV = [
   { href: '/home', label: 'Home' },
   { href: '/opportunities', label: 'Opportunities' },
+  { href: '/campaigns', label: 'Campaigns' },
   { href: '/profile', label: 'Profile' },
 ] as const;
 
@@ -45,10 +46,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-3 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
         {NAV.map((n) => (
-          <Link key={n.href} href={n.href} className="flex h-16 items-center justify-center text-sm font-medium">
+          <Link key={n.href} href={n.href} className="flex h-16 items-center justify-center text-[0.8rem] font-medium">
             {n.label}
           </Link>
         ))}

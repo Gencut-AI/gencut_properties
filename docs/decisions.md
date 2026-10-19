@@ -121,6 +121,7 @@ can give exact purchase dates.
 - A failing draft gets one retry that lists the problems; after that it is marked failed with the reasons.
 - Every call is recorded in `model_runs` with provider, model, tokens, cost, latency, prompt version and the fact keys used.
 - Drafting runs in a Netlify background function (Free plan; up to 15 minutes), started by the server action, because normal requests time out before a draft finishes.
+- Netlify functions are written in `apps/web/functions-src/` and bundled by `apps/web/scripts/bundle-functions.ts` (part of `next build`'s script) into self-contained modules in `apps/web/netlify/functions/`. Netlify's own packaging left imports of the TypeScript workspace packages unresolved (ERR_MODULE_NOT_FOUND in production, even with `node_bundler = "esbuild"`), so the first drafts never started. `apps/web/test/functions-bundle.test.ts` fails if a bundle still imports a workspace package. Netlify functions also bypass the session proxy (`apps/web/proxy.ts` matcher).
 - The letter is stored as one outreach action in state DRAFT. Approval and sending come later, through the compliance gate.
 
 **Why:** deterministic checks are free, testable and auditable, unlike a second "checker" model. The facts given to the writer exclude how the owner was found, the roll value and sale history, so the letter cannot reveal them. Netlify's normal function limit is shorter than a typical draft.

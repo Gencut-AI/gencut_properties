@@ -15,6 +15,9 @@ coverage/
 # Local test databases
 .tmp/
 
+# Generated Netlify function bundles (built from apps/web/functions-src)
+apps/web/netlify/functions/*.mjs
+
 # Next.js generated
 next-env.d.ts
 *.tsbuildinfo

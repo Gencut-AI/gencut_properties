@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/bundle-functions.ts && next build",
     "start": "next start",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "bundle:functions": "node scripts/bundle-functions.ts"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "5.3.0",
@@ -27,6 +28,7 @@
     "@types/node": "26.2.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "esbuild": "0.25.10",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3"
   }

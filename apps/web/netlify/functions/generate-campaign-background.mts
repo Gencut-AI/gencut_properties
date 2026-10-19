@@ -20,8 +20,10 @@ export default async (req: Request): Promise<void> => {
   const router = modelRouterFromEnv(process.env);
   const url = process.env.DATABASE_URL;
   if (!campaignId || !router || !url) {
-    log({ outcome: 'not_started', campaignId: Boolean(campaignId), modelKeyConfigured: Boolean(router), databaseConfigured: Boolean(url) });
-    return;
+    // A misconfigured deploy is an error, so it shows in the function's error log.
+    const detail = { outcome: 'not_started', campaignId: Boolean(campaignId), modelKeyConfigured: Boolean(router), databaseConfigured: Boolean(url) };
+    log(detail);
+    throw new Error(`Campaign drafting did not start: ${JSON.stringify(detail)}`);
   }
   const sql = createDb(url, { max: 1 });
   try {

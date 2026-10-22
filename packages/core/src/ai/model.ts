@@ -12,8 +12,8 @@ export interface ModelRequest {
   /** Stable instructions; providers may cache them. */
   readonly system: string;
   readonly user: string;
+  /** Upper bound on output tokens (on models that think, thinking counts too). */
   readonly maxOutputTokens: number;
-  readonly temperature?: number;
 }
 
 export interface ModelUsage {

@@ -27,6 +27,18 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPricing>> = {
   'anthropic:claude-haiku-5-5': { inputPerMTok: 0.1, outputPerMTok: 0.5, cacheReadPerMTok: 0.01 },
 };
 
+/**
+ * Model-specific request fields, by provider:model. Newer Claude models reject
+ * fields older ones accepted (Sonnet 5.5 returns 400 for temperature, top_p and
+ * top_k, and thinks before answering unless told otherwise), so these settings
+ * live with the model, not with the caller.
+ * Source: https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide (read 22 Oct 2026).
+ */
+export const MODEL_REQUEST_FIELDS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  // A short letter needs no up-front thinking; "between_tools" is Sonnet 5.5's lowest setting.
+  'anthropic:claude-sonnet-5-5': { thinking: { type: 'between_tools' }, output_config: { effort: 'high' } },
+};
+
 export const DEFAULT_ROUTES: Readonly<Record<ModelRole, string>> = {
   reasoning: 'anthropic:claude-sonnet-5-5',
   creative: 'anthropic:claude-sonnet-5-5',
@@ -110,10 +122,12 @@ export class AnthropicProvider implements ModelProvider {
   readonly name = 'anthropic';
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly fields: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 
-  constructor(apiKey: string, fetchImpl: typeof fetch = fetch) {
+  constructor(apiKey: string, fetchImpl: typeof fetch = fetch, fields: Readonly<Record<string, Readonly<Record<string, unknown>>>> = MODEL_REQUEST_FIELDS) {
     this.apiKey = apiKey;
     this.fetchImpl = fetchImpl;
+    this.fields = fields;
   }
 
   async complete(model: string, request: ModelRequest): Promise<ProviderReply> {
@@ -125,7 +139,7 @@ export class AnthropicProvider implements ModelProvider {
         body: JSON.stringify({
           model,
           max_tokens: request.maxOutputTokens,
-          ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+          ...this.fields[`anthropic:${model}`],
           // The instructions are identical on every call, so they are cached.
           system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: request.user }],
@@ -136,8 +150,14 @@ export class AnthropicProvider implements ModelProvider {
       throw new ModelCallError('anthropic', `Could not reach the Anthropic API (${e instanceof Error ? e.name : 'error'}).`);
     }
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: { type?: string } } | null;
-      throw new ModelCallError('anthropic', `Anthropic API returned ${res.status}${body?.error?.type ? ` (${body.error.type})` : ''}.`, res.status);
+      const body = (await res.json().catch(() => null)) as { error?: { type?: string; message?: string } } | null;
+      // Keep Anthropic's explanation (it says which field or setting is wrong), never the key.
+      const detail = (body?.error?.message ?? '').split(this.apiKey).join('[key]').replace(/\s+/g, ' ').trim().slice(0, 300);
+      throw new ModelCallError(
+        'anthropic',
+        `Anthropic API returned ${res.status}${body?.error?.type ? ` (${body.error.type})` : ''}${detail ? `: ${detail}` : '.'}`,
+        res.status,
+      );
     }
     const body = (await res.json()) as {
       content?: { type: string; text?: string }[];

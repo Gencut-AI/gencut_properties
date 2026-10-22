@@ -115,7 +115,7 @@ describe('model router', () => {
   });
 
   it('calls the Anthropic API with the key in a header, caches the instructions, and never echoes the key in errors', async () => {
-    let seen: { headers: Record<string, string>; body: { system: { cache_control?: unknown }[]; model: string } } | null = null;
+    let seen: { headers: Record<string, string>; body: { system: { cache_control?: unknown }[]; model: string; [k: string]: unknown } } | null = null;
     const ok = (async (_url: string | URL | Request, init?: RequestInit) => {
       seen = { headers: init?.headers as Record<string, string>, body: JSON.parse(String(init?.body)) };
       return Response.json({ content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 100, output_tokens: 5, cache_read_input_tokens: 900 } });
@@ -125,10 +125,24 @@ describe('model router', () => {
     assert.deepEqual(res.usage, { inputTokens: 1000, outputTokens: 5, cacheReadTokens: 900, cacheWriteTokens: 0 });
     assert.equal(seen!.headers['x-api-key'], 'test-secret-key');
     assert.ok(seen!.body.system[0]?.cache_control);
+    // Sonnet 5.5 rejects sampling parameters and thinks unless told not to.
+    for (const k of ['temperature', 'top_p', 'top_k']) assert.ok(!(k in seen!.body), `${k} must not be sent`);
+    assert.deepEqual(seen!.body.thinking, { type: 'between_tools' });
+    assert.deepEqual(seen!.body.output_config, { effort: 'high' });
+    // A model without listed fields gets none.
+    await new AnthropicProvider('test-secret-key', ok).complete('other-model', { role: 'fast', system: 's', user: 'u', maxOutputTokens: 5 });
+    assert.ok(!('thinking' in seen!.body) && !('output_config' in seen!.body));
     const denied = (async () => Response.json({ error: { type: 'authentication_error' } }, { status: 401 })) as typeof fetch;
     await assert.rejects(
       new AnthropicProvider('test-secret-key', denied).complete('m', { role: 'fast', system: 's', user: 'u', maxOutputTokens: 5 }),
-      (e: Error) => e instanceof ModelCallError && /401 \(authentication_error\)/.test(e.message) && !e.message.includes('test-secret-key'),
+      (e: Error) => e instanceof ModelCallError && /401 \(authentication_error\)\.$/.test(e.message) && !e.message.includes('test-secret-key'),
+    );
+    // A rejected request keeps Anthropic's explanation, with the key redacted if it were ever echoed.
+    const invalid = (async () =>
+      Response.json({ error: { type: 'invalid_request_error', message: 'temperature: not supported for this model (key test-secret-key)' } }, { status: 400 })) as typeof fetch;
+    await assert.rejects(
+      new AnthropicProvider('test-secret-key', invalid).complete('m', { role: 'fast', system: 's', user: 'u', maxOutputTokens: 5 }),
+      (e: Error) => /400 \(invalid_request_error\): temperature: not supported for this model \(key \[key\]\)/.test(e.message) && !e.message.includes('test-secret-key'),
     );
   });
 });

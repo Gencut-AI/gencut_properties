@@ -67,7 +67,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
       {c.status === 'generation_failed' && (
         <section className="rounded-panel border border-[#e7b3c0] bg-[#fdf4f6] p-6">
-          <h2 className="display text-xl font-semibold">The draft did not pass</h2>
+          <h2 className="display text-xl font-semibold">
+            {c.problems.length > 0 ? 'The draft did not pass GenCut’s checks' : 'The draft could not be written'}
+          </h2>
           <p className="mt-2 text-ink-soft">{c.error}</p>
           {c.problems.length > 0 && (
             <ul className="mt-3 list-disc pl-5 text-sm">

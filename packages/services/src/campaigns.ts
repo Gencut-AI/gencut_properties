@@ -147,7 +147,7 @@ export async function generateCampaignDraft(sql: Sql, campaignId: string, router
       const prompt = campaignPrompt(facts, problems);
       let response;
       try {
-        response = await router.complete({ role: DRAFT_ROLE, system: prompt.system, user: prompt.user, maxOutputTokens: 2000, temperature: 0.6 });
+        response = await router.complete({ role: DRAFT_ROLE, system: prompt.system, user: prompt.user, maxOutputTokens: 3000 });
       } catch (e) {
         await recordModelRun(sql, run, { ok: false, provider: route.provider, model: route.model, error: e instanceof Error ? e.message : String(e) });
         throw e;

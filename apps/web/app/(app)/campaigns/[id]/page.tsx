@@ -1,10 +1,12 @@
-import { getCampaign, isServiceError } from '@gencut/services';
+import { getBusinessProfile, getCampaign, getCampaignMedia, isServiceError } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { mediaEnabled } from '../../../../lib/background.ts';
 import { db } from '../../../../lib/db.ts';
 import { requireSession } from '../../../../lib/session.ts';
 import { retryCampaignAction } from '../../_campaign/actions.ts';
+import { FilmCrew } from '../../_campaign/film-crew.tsx';
 import { CAMPAIGN_STATUS_LABEL, CHANNEL_LABEL } from '../../_campaign/labels.ts';
 import { LetterEditor } from '../../_campaign/letter-editor.tsx';
 import { AutoRefresh } from '../../_discovery/auto-refresh.tsx';
@@ -13,14 +15,25 @@ export const metadata: Metadata = { title: 'Campaign' };
 
 const usd = (v: number) => (v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
 
-export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CampaignPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ media_error?: string }>;
+}) {
   const { ctx, workspace } = await requireSession();
   const { id } = await params;
+  const { media_error: mediaError } = await searchParams;
   const c = await getCampaign(db(), ctx, workspace.workspaceId, id).catch((e: unknown) => {
     if (isServiceError(e) && e.code === 'not_found') notFound();
     throw e;
   });
   const d = c.draft;
+  const [media, profile] = await Promise.all([
+    getCampaignMedia(db(), ctx, workspace.workspaceId, c.id),
+    getBusinessProfile(db(), ctx, workspace.workspaceId),
+  ]);
   // A draft that has been "writing" for over two minutes most likely never started.
   const stuck = c.status === 'generating' && Date.now() - c.updatedAt.getTime() > 2 * 60_000;
 
@@ -160,6 +173,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             </ol>
             <p className="mt-2 text-sm text-ink-soft">Call reminders are only for owners you have a lawful basis to call; GenCut will check before any call task is offered.</p>
           </section>
+
+          {(c.status === 'review' || c.status === 'approved') && profile && (
+            <FilmCrew
+              campaignId={c.id}
+              media={media}
+              agent={{ name: profile.licenseeName, brokerage: profile.brokerageName }}
+              enabled={mediaEnabled()}
+              startError={mediaError ? mediaError.slice(0, 300) : null}
+            />
+          )}
         </>
       )}
 

@@ -1,8 +1,9 @@
-import { getBusinessProfile } from '@gencut/services';
+import { currentHeadshotId, getBusinessProfile } from '@gencut/services';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { db } from '../../../lib/db.ts';
 import { requireSession } from '../../../lib/session.ts';
+import { HeadshotForm } from '../_profile-form/headshot-form.tsx';
 import { ProfileForm } from '../_profile-form/profile-form.tsx';
 import { profileToFormValues } from '../_profile-form/values.ts';
 
@@ -13,6 +14,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const profile = await getBusinessProfile(db(), ctx, workspace.workspaceId);
   if (!profile) redirect('/onboarding');
   const { saved } = await searchParams;
+  const headshotId = await currentHeadshotId(db(), ctx, workspace.workspaceId);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -22,6 +24,9 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           Profile saved.
         </p>
       )}
+      <div className="mt-8">
+        <HeadshotForm headshotId={headshotId} name={profile.licenseeName} />
+      </div>
       <div className="mt-10">
         <ProfileForm initial={profileToFormValues(profile)} submitLabel="Save changes" next="/profile?saved=1" />
       </div>

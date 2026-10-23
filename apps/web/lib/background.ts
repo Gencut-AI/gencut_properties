@@ -27,3 +27,8 @@ export async function startBackgroundJob(name: string, body: Record<string, stri
 export function draftingEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 }
+
+/** Whether the Film Crew can run on this deploy (a text model key and an image model key exist). */
+export function mediaEnabled(): boolean {
+  return draftingEnabled() && Boolean(process.env.GEMINI_API_KEY?.trim());
+}

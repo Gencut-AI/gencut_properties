@@ -42,6 +42,7 @@ describe('migrations', () => {
       'campaigns',
       'consents',
       'data_sources',
+      'media_assets',
       'memberships',
       'model_runs',
       'opportunities',

@@ -99,6 +99,13 @@ export class ModelRouter {
     return { provider: spec.slice(0, i), model: spec.slice(i + 1) };
   }
 
+  /** Price of a call of this size on the model a role routes to, for budget checks before the call. */
+  estimateUsd(role: ModelRole, inputTokens: number, outputTokens: number): number {
+    const { provider, model } = this.route(role);
+    const price = this.prices[`${provider}:${model}`];
+    return price ? costUsd({ inputTokens, outputTokens, cacheReadTokens: 0 }, price) : 0;
+  }
+
   async complete(request: ModelRequest): Promise<RoutedResponse> {
     const { provider, model } = this.route(request.role);
     const impl = this.providers[provider];
@@ -214,7 +221,8 @@ export interface ModelRunRecord {
   readonly workspaceId: string;
   readonly campaignId?: string | null;
   readonly purpose: string;
-  readonly role: ModelRole;
+  /** A text role from the router, or 'image' for image generation. */
+  readonly role: ModelRole | 'image';
   readonly promptVersion: string;
   readonly factKeys: readonly string[];
 }

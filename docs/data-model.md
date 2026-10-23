@@ -43,6 +43,16 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
   → `COMPLETED` / `FAILED`. A trigger enforces legal transitions, freezes approved content
   and clears approval on return to draft. Approved rows always record approver and time.
 
+## Media (Film Crew)
+
+- `campaigns.media_status` — `none` → `generating` → `ready` / `failed`, with `social_post`
+  (the checked post), `media_error` and `media_problems`.
+- `media_assets` — images in Postgres: the workspace's headshot (`upload`, one current per
+  workspace) and generated neighborhood pictures (`generated`, always `illustrative`, tied to a
+  campaign, with provider, model and prompt). ≤ 5 MB each.
+- `model_runs.role` includes `image`; Film Crew calls (`social_post`, `neighborhood_image`)
+  count against the $1 media budget per campaign.
+
 ## Audit
 
 - `audit_events` — append-only (update/delete raise an error): actor type and id,
@@ -51,4 +61,4 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 
 ## Coming next
 
-M3 `agent_runs`; M4 `campaign_assets`; M6 `campaign_outcomes`, `experiments`.
+`agent_runs`; buyer prospects (Buyers tab); M6 `experiments`.

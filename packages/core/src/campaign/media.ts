@@ -179,12 +179,16 @@ export function checkSocialPost(
     problems.push({ code: 'missing_brokerage', message: `The caption must include the agent's name "${agent.licenseeName}".` });
   }
 
-  // The property and its owner never appear: not the full address, the house number with the street, or the owner's name.
+  // The property and its owner never appear: not the address, the house number followed by the
+  // start of the street, the street itself, or the owner's name. A house number alone is not
+  // flagged: it can equal a ZIP code or another figure the post may use.
   const text = ` ${normalizeText(socialPostText(p))} `;
   const address = normalizeText(subject.address);
   const houseNumber = /^\d+/.exec(address)?.[0];
   const street = houseNumber ? address.slice(houseNumber.length).trim() : address;
-  if (address && (text.includes(` ${address} `) || (houseNumber && text.includes(` ${houseNumber} `)) || (street.length > 5 && text.includes(` ${street} `)))) {
+  const streetStart = street.split(' ')[0] ?? '';
+  const numberOnStreet = houseNumber && streetStart ? ` ${houseNumber} ${streetStart} ` : null;
+  if (address && (text.includes(` ${address} `) || (numberOnStreet && text.includes(numberOnStreet)) || (street.length > 5 && text.includes(` ${street} `)))) {
     problems.push({ code: 'reveals_subject', message: 'The post must not mention the property, its address or its street.' });
   }
   const owner = normalizeText(subject.ownerName);

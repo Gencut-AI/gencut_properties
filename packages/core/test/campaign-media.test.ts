@@ -82,6 +82,12 @@ describe('Film Crew social post', () => {
       assert.ok(problems({ ...good, caption }).includes('reveals_subject'), caption);
     }
     assert.ok(problems({ ...good, imageBrief: 'The house at 100 Example Way at dusk.' }).includes('reveals_subject'));
+    assert.ok(problems({ ...good, caption: `${good.caption} See 100 Example soon.` }).includes('reveals_subject'), 'number with the start of the street');
+  });
+
+  it('does not mistake a ZIP code that equals the house number for the address', () => {
+    const sameNumber = { address: '33180 SAMPLE AVE', ownerName: 'TEST HOLDINGS LLC' };
+    assert.deepEqual(checkSocialPost(good, facts, agent, sameNumber).map((x) => x.code), []);
   });
 
   it('requires the brokerage and agent name, and rejects invented figures, prohibited words and bad hashtags', () => {

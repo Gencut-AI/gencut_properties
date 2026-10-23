@@ -10,3 +10,5 @@ export * from './opportunities.ts';
 export * from './models.ts';
 export * from './campaigns.ts';
 export * from './outcomes.ts';
+export * from './images.ts';
+export * from './film-crew.ts';

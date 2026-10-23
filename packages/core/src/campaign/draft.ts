@@ -181,7 +181,14 @@ export const PROHIBITED_TERMS: Readonly<Record<'fair_housing' | 'sensitivity' | 
 };
 
 export interface DraftProblem {
-  readonly code: 'unsupported_figure' | 'unknown_fact' | 'missing_brokerage' | 'prohibited_term' | 'too_long';
+  readonly code:
+    | 'unsupported_figure'
+    | 'unknown_fact'
+    | 'missing_brokerage'
+    | 'prohibited_term'
+    | 'too_long'
+    | 'reveals_subject'
+    | 'bad_hashtag';
   readonly message: string;
 }
 
@@ -210,47 +217,61 @@ export function draftText(d: CampaignDraft, withPlan = true): string {
   ].join('\n');
 }
 
-/** Run every check. An empty list means the draft may be shown for review. */
-export function checkCampaignDraft(d: CampaignDraft, facts: readonly CampaignFact[], agent: AgentForDraft): DraftProblem[] {
-  const problems: DraftProblem[] = [];
-  const keys = new Set(facts.map((f) => f.key));
-  const factText = facts.map((f) => f.value).join(' ');
-  const allowed = [...factText.matchAll(NUMBER)].map((m) => numericValue(m[0])).filter((n) => Number.isFinite(n));
+/** Lower-case words and digits only, for containment checks. */
+export const normalizeText = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-  // Figures: anything over 31 (a day count) or with a unit must match a fact (within 1% for rounded money).
-  // Follow-up actions count days ("send a second letter after 45 days"); they are checked for wording, not figures.
-  for (const m of draftText(d, false).matchAll(NUMBER)) {
+/**
+ * Figures in `text` that no fact supports. Anything over 31 (a day count) or
+ * with a unit must match a fact: rounded money within 1%, years, counts and
+ * areas exactly.
+ */
+export function unsupportedFigures(text: string, facts: readonly CampaignFact[]): DraftProblem[] {
+  const allowed = [...facts.map((f) => f.value).join(' ').matchAll(NUMBER)].map((m) => numericValue(m[0])).filter((n) => Number.isFinite(n));
+  const problems: DraftProblem[] = [];
+  for (const m of text.matchAll(NUMBER)) {
     const token = m[0].trim();
     const n = numericValue(token);
     if (!Number.isFinite(n)) continue;
     const hasUnit = /[$%]|percent|million|thousand|k\b|m\b/i.test(token);
     if (!hasUnit && n <= 31 && !/,/.test(token)) continue;
-    // Rounded money ("$2.7 million") may sit within 1% of a fact; years, counts and areas must match exactly.
     const money = /[$]|million|thousand|k\b|m\b/i.test(token);
     const supported = allowed.some((a) => (money && a > 0 ? Math.abs(a - n) / a <= 0.01 : a === n));
     if (!supported) problems.push({ code: 'unsupported_figure', message: `"${token}" is not in the provided facts.` });
   }
+  return problems;
+}
+
+/** Prohibited words in `text` (fair housing, sensitivity, how-found, pressure); the agent's own names are exempt. */
+export function prohibitedTerms(text: string, agent: Pick<AgentForDraft, 'licenseeName' | 'brokerageName'>): DraftProblem[] {
+  const lower = ` ${text.toLowerCase().replace(/[’']/g, "'")} `;
+  const own = normalizeText(`${agent.licenseeName} ${agent.brokerageName}`);
+  const problems: DraftProblem[] = [];
+  for (const [rule, terms] of Object.entries(PROHIBITED_TERMS)) {
+    for (const term of terms) {
+      const re = new RegExp(`(^|[^a-z])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i');
+      if (re.test(lower) && !own.includes(normalizeText(term))) {
+        problems.push({ code: 'prohibited_term', message: `"${term}" is not allowed (${rule.replace('_', ' ')}).` });
+      }
+    }
+  }
+  return problems;
+}
+
+/** Run every check. An empty list means the draft may be shown for review. */
+export function checkCampaignDraft(d: CampaignDraft, facts: readonly CampaignFact[], agent: AgentForDraft): DraftProblem[] {
+  const keys = new Set(facts.map((f) => f.key));
+  // Follow-up actions count days ("send a second letter after 45 days"); they are checked for wording, not figures.
+  const problems: DraftProblem[] = [...unsupportedFigures(draftText(d, false), facts)];
 
   for (const k of [...d.factsUsed, ...d.strategy.reasons.flatMap((r) => r.factKeys)]) {
     if (!keys.has(k)) problems.push({ code: 'unknown_fact', message: `Fact key "${k}" was not provided.` });
   }
 
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  if (!norm(d.letter.signature.join(' ')).includes(norm(agent.brokerageName))) {
+  if (!normalizeText(d.letter.signature.join(' ')).includes(normalizeText(agent.brokerageName))) {
     problems.push({ code: 'missing_brokerage', message: `The signature must include the brokerage name "${agent.brokerageName}".` });
   }
 
-  const lower = ` ${draftText(d).toLowerCase().replace(/[’']/g, "'")} `;
-  // Allowed exceptions: the agent's own name or brokerage may contain a listed word.
-  const own = norm(`${agent.licenseeName} ${agent.brokerageName}`);
-  for (const [rule, terms] of Object.entries(PROHIBITED_TERMS)) {
-    for (const term of terms) {
-      const re = new RegExp(`(^|[^a-z])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i');
-      if (re.test(lower) && !own.includes(norm(term))) {
-        problems.push({ code: 'prohibited_term', message: `"${term}" is not allowed (${rule.replace('_', ' ')}).` });
-      }
-    }
-  }
+  problems.push(...prohibitedTerms(draftText(d), agent));
 
   const words = [...d.letter.paragraphs, d.letter.greeting, d.letter.closing].join(' ').split(/\s+/).filter(Boolean).length;
   if (words > 260) problems.push({ code: 'too_long', message: `The letter has ${words} words; keep it under 220.` });

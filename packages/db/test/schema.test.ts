@@ -8,6 +8,9 @@ import {
   CHANNELS,
   CONSENT_SCOPES,
   CONTACT_BASES,
+  MEDIA_ASSET_KINDS,
+  MEDIA_CONTENT_TYPES,
+  MEDIA_STATES,
   OUTREACH_STATES,
   type OutreachState,
   isLegalOutreachTransition,
@@ -215,6 +218,29 @@ describe('schema matches the domain model', () => {
        VALUES ('${workspace}', '${opp}', '${o}', 60, 'seller-v3', '2026-10-01', '${USER}')`;
     db.query(outcome('listing'));
     expectSqlError(db, outcome('sold'));
+  });
+
+  it('tracks Film Crew media: states from core, labelled generated scenes, one current headshot, image runs', () => {
+    for (const s of MEDIA_STATES) db.query(`UPDATE campaigns SET media_status = '${s}' WHERE id = '${campaign}'`);
+    expectSqlError(db, `UPDATE campaigns SET media_status = 'posted' WHERE id = '${campaign}'`);
+    const asset = (kind: string, source: string, extra: { campaign?: string; illustrative?: boolean; provider?: string; type?: string } = {}) =>
+      `INSERT INTO media_assets (workspace_id, campaign_id, kind, source, content_type, bytes, byte_size, illustrative, provider, model)
+       VALUES ('${workspace}', ${extra.campaign ? `'${extra.campaign}'` : 'NULL'}, '${kind}', '${source}', '${extra.type ?? 'image/png'}',
+               '\\x89504e47'::bytea, 4, ${extra.illustrative ?? false}, ${extra.provider ? `'${extra.provider}'` : 'NULL'},
+               ${extra.provider ? "'m'" : 'NULL'}) RETURNING id`;
+    assert.deepEqual([...MEDIA_ASSET_KINDS].sort(), ['headshot', 'neighborhood_image']);
+    for (const t of MEDIA_CONTENT_TYPES) {
+      db.query(asset('headshot', 'upload', { type: t }));
+      db.query(`UPDATE media_assets SET replaced_at = now() WHERE kind = 'headshot' AND replaced_at IS NULL`);
+    }
+    db.query(asset('headshot', 'upload'));
+    expectSqlError(db, asset('headshot', 'upload'));
+    expectSqlError(db, asset('headshot', 'upload', { type: 'image/svg+xml' }));
+    db.query(asset('neighborhood_image', 'generated', { campaign, illustrative: true, provider: 'google' }));
+    expectSqlError(db, asset('neighborhood_image', 'generated', { campaign, illustrative: false, provider: 'google' }));
+    expectSqlError(db, asset('neighborhood_image', 'upload', { campaign, illustrative: true }));
+    expectSqlError(db, asset('headshot', 'generated', { provider: 'google' }));
+    db.query(`INSERT INTO model_runs (workspace_id, purpose, role, provider, model, prompt_version, status) VALUES ('${workspace}', 'x', 'image', 'google', 'm', 'v', 'ok')`);
   });
 
   it('enables row-level security on every table, so the public Data API sees nothing', () => {

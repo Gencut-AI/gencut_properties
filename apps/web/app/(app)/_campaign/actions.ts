@@ -5,6 +5,7 @@ import {
   recordOutcome,
   retryCampaignDraft,
   startCampaignDraft,
+  startCampaignMedia,
   updateCampaignLetter,
 } from '@gencut/services';
 import { revalidatePath } from 'next/cache';
@@ -14,6 +15,7 @@ import { db } from '../../../lib/db.ts';
 import { requireSession } from '../../../lib/session.ts';
 
 const JOB = 'generate-campaign-background';
+const MEDIA_JOB = 'generate-media-background';
 
 /** Start a draft for an opportunity and open its campaign page. */
 export async function startCampaignAction(form: FormData): Promise<void> {
@@ -92,4 +94,24 @@ export async function recordOutcomeAction(_prev: FormState, form: FormData): Pro
   revalidatePath(`/opportunities/${opportunityId}`);
   revalidatePath('/home');
   return { status: 'saved' };
+}
+
+/**
+ * Start the Film Crew on a campaign (a social post and a neighborhood picture),
+ * or restart a run whose background job never reported back.
+ */
+export async function startMediaAction(form: FormData): Promise<void> {
+  const { ctx, workspace } = await requireSession();
+  const campaignId = String(form.get('campaignId') ?? '');
+  if (form.get('restart') !== '1') {
+    try {
+      await startCampaignMedia(db(), ctx, workspace.workspaceId, campaignId);
+    } catch (e) {
+      if (isServiceError(e)) redirect(`/campaigns/${campaignId}?media_error=${encodeURIComponent(e.message)}#film-crew`);
+      throw e;
+    }
+  }
+  await startBackgroundJob(MEDIA_JOB, { campaignId });
+  revalidatePath(`/campaigns/${campaignId}`);
+  redirect(`/campaigns/${campaignId}#film-crew`);
 }

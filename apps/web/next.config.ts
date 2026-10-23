@@ -7,6 +7,8 @@ const config: NextConfig = {
   // Workspace packages ship TypeScript source; Next compiles them with the app.
   transpilePackages: ['@gencut/core', '@gencut/services'],
   poweredByHeader: false,
+  // Headshot uploads go through a server action; the service caps them at 3 MB.
+  experimental: { serverActions: { bodySizeLimit: '4mb' } },
   reactStrictMode: true,
   env: {
     GENCUT_VERSION: pkg.version,

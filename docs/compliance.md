@@ -39,6 +39,17 @@ shown, and again after every edit:
 The writer is never given the owner's mailing location, the roll value, sale history or the
 signals that selected the owner. Nothing is sent: letters stay outreach actions in state DRAFT.
 
+Social posts (`packages/core/src/campaign/media.ts`) pass the same grounding, wording and
+fair-housing checks, and three more:
+
+- **No subject:** the post never names the campaign's property, its street or its owner. That
+  home is not for sale; marketing it would be misleading advertising (Fla. Stat. §475.25(1)(c)).
+- **Florida advertising:** the caption carries the agent's name and the brokerage name.
+- **Pictures:** generated neighborhood pictures have no people, no text and no identifiable
+  house, and are always labelled "Illustrative image". Agents' photos are their own uploads.
+
+Nothing is posted; publishing will be a separate, approved channel.
+
 ## Data sources
 
 | Source | Basis | What GenCut keeps | What it authorizes |
@@ -58,4 +69,5 @@ owners, veterans) are never read. See `docs/scoring.md`.
 - Florida Statutes §501.616 — http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0500-0599/0501/Sections/0501.616.html
 - FCC fact sheet (Sept 2026) — https://docs.fcc.gov/public/attachments/DOC-424844A1.pdf
 - WhatsApp Business Messaging Policy — https://business.whatsapp.com/policy
+- Fla. Admin. Code R. 61J2-10.025 (advertising) — https://www.law.cornell.edu/regulations/florida/Fla-Admin-Code-Ann-R-61J2-10-025
 - Florida Realtors on Rule 61J2-10.025 — https://www.floridarealtors.org/law-ethics/library/realtor-advertising-rules-florida

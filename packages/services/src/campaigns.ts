@@ -300,7 +300,7 @@ export async function getCampaign(db: Db, ctx: RequestContext, workspaceId: stri
            coalesce(sum(input_tokens), 0)::int AS input, coalesce(sum(output_tokens), 0)::int AS output,
            coalesce(sum(cost_usd), 0)::text AS cost, coalesce(sum(latency_ms), 0)::int AS latency,
            array_agg(DISTINCT provider || '/' || model) FILTER (WHERE model <> '') AS models
-    FROM model_runs WHERE campaign_id = ${campaignId}
+    FROM model_runs WHERE campaign_id = ${campaignId} AND purpose = 'campaign_draft'
   `;
   const [action] = await db<{ state: string }[]>`
     SELECT state FROM outreach_actions WHERE campaign_id = ${campaignId} ORDER BY created_at DESC LIMIT 1

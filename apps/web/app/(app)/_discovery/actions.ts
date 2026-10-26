@@ -17,5 +17,7 @@ export async function triageAction(form: FormData): Promise<void> {
   }
   revalidatePath('/opportunities');
   revalidatePath(`/opportunities/${id}`);
+  revalidatePath('/buyers');
+  revalidatePath(`/buyers/${id}`);
   revalidatePath('/home');
 }

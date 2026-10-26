@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 const NAV = [
   { href: '/home', label: 'Home' },
   { href: '/opportunities', label: 'Opportunities' },
+  { href: '/buyers', label: 'Buyers' },
   { href: '/campaigns', label: 'Campaigns' },
   { href: '/profile', label: 'Profile' },
 ] as const;
@@ -46,7 +47,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className="flex h-16 items-center justify-center text-[0.8rem] font-medium">

@@ -92,6 +92,7 @@ export async function recordOutcomeAction(_prev: FormState, form: FormData): Pro
     throw e;
   }
   revalidatePath(`/opportunities/${opportunityId}`);
+  revalidatePath(`/buyers/${opportunityId}`);
   revalidatePath('/home');
   return { status: 'saved' };
 }

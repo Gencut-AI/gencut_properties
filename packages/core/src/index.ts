@@ -11,3 +11,5 @@ export * from './sources/fl-dor-nal.ts';
 export * from './ai/model.ts';
 export * from './campaign/draft.ts';
 export * from './campaign/media.ts';
+export * from './buyers/buyer-radar.ts';
+export * from './outcomes/outcomes.ts';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
-import { BUYER_LETTER_PROMPT_VERSION, type CampaignDraft, type PropertyTransaction, buyerProfile, ownerKey } from '@gencut/core';
+import { BUYER_LETTER_PROMPT_VERSION, BUYER_SCORING_VERSION, type CampaignDraft, type PropertyTransaction, buyerProfile, ownerKey } from '@gencut/core';
 import { migrateUp } from '../../db/src/migrate.ts';
 import { type TestDb, createTestDb } from '../../db/test/helpers.ts';
 import {
@@ -125,7 +125,7 @@ describe('Buyer Radar services', () => {
     assert.deepEqual(buyers.map((b) => b.profile.name), ['Alpha Homes, L.L.C.', 'BETA HOLDINGS INC']);
     const alpha = buyers[0]!;
     assert.equal(alpha.profile.purchases, 4, 'spellings of one company are grouped');
-    assert.equal(alpha.scoringVersion, 'buyer-v1');
+    assert.equal(alpha.scoringVersion, BUYER_SCORING_VERSION);
     assert.equal(alpha.rollFileDate, FILE_DATE);
     // 4 purchases 40, latest Apr 2026 within 6 months of Jul 2026 20, all in focus 15 + 10, single-family 10, price 5.
     assert.equal(alpha.score, 100);
@@ -171,7 +171,7 @@ describe('Buyer Radar services', () => {
     assert.equal(again?.id, alpha.id, 'same buyer, still saved');
     const buyersReport = await outcomeReport(sql, u, workspaceId, 'investor_buyer');
     assert.equal(buyersReport.opportunities, 1);
-    assert.deepEqual(buyersReport.scoringVersions, ['buyer-v1']);
+    assert.deepEqual(buyersReport.scoringVersions, [BUYER_SCORING_VERSION]);
     assert.equal(buyersReport.bands[0]?.replied, 1);
     assert.equal((await outcomeReport(sql, u, workspaceId)).opportunities, 0, 'seller report excludes buyers');
   });

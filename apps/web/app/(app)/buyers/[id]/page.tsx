@@ -35,6 +35,10 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+const PA_SEARCH = 'https://www.miamidadepa.gov/pa/real-estate/property-search.page';
+/** Miami-Dade folios are 13 digits, written 30-1234-567-8901 on the Property Appraiser's site. */
+const folio = (id: string) => (/^\d{13}$/.test(id) ? `${id.slice(0, 2)}-${id.slice(2, 6)}-${id.slice(6, 9)}-${id.slice(9)}` : id);
+
 export default async function BuyerPage({ params }: { params: Promise<{ id: string }> }) {
   const { ctx, workspace } = await requireSession();
   const { id } = await params;
@@ -65,6 +69,9 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           <p className="mt-1 text-ink-soft">
             {p.purchases} verified purchases · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
           </p>
+          <p className="mt-1 text-sm text-ink-soft">
+            Newest evidence: {monthLabel(p.latest.year, p.latest.month)}, from the roll of {formatDay(b.rollFileDate)}
+          </p>
         </div>
       </header>
 
@@ -75,8 +82,11 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           Verified purchases
         </h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Qualified (arm&rsquo;s-length) sales to this company recorded on the county tax roll. Check any of them by folio number in the
-          Miami-Dade Property Appraiser&rsquo;s property search.
+          Qualified (arm&rsquo;s-length) sales to this company recorded on the county tax roll. Check any of them by folio number in the{' '}
+          <a href={PA_SEARCH} target="_blank" rel="noopener noreferrer" className="font-medium text-bay-deep underline underline-offset-4">
+            Miami-Dade Property Appraiser&rsquo;s property search
+          </a>
+          .
         </p>
         {b.missingPurchases > 0 && (
           <p className="mt-3 rounded-xl bg-glass p-4 text-sm" role="status">
@@ -101,7 +111,7 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
                 {x.yearBuilt ? ` · built ${x.yearBuilt}` : ''}
               </p>
               <p className="mt-1 text-xs text-ink-soft">
-                Folio {x.parcelId} · qualification code {x.qualificationCode}
+                Folio {folio(x.parcelId)} · qualification code {x.qualificationCode}
                 {spellings.length > 1 ? ` · on the roll as “${x.ownerNameOnRoll}”` : ''}
               </p>
             </li>

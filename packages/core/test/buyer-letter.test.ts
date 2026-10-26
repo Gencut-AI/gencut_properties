@@ -18,7 +18,7 @@ import {
 // Synthetic company, purchases and agent. Not real.
 const tx = (n: number, over: Partial<PropertyTransaction> = {}): PropertyTransaction => ({
   countyCode: '23', parcelId: `P${n}`, rollYear: 2026, situs: { address: `${n}00 EXAMPLE DR`, city: 'AVENTURA', zip: '33180' },
-  useCode: '004', units: 1, livingArea: 1100, yearBuilt: 2005, ownerName: 'BAYVIEW SAMPLE HOLDINGS LLC', ownerKey: 'BAYVIEW SAMPLE HOLDINGS LLC',
+  useCode: '004', units: 1, livingArea: 1100, yearBuilt: 2005, ownerName: 'BAYVIEW SAMPLE HOLDINGS LLC', ownerKey: 'BAYVIEWSAMPLEHOLDINGSLLC',
   ownerMailing: { address1: '1 SAMPLE PLAZA', address2: '', city: 'MIAMI', state: 'FL', zip: '33131' },
   saleYear: 2026, saleMonth: n, price: 400_000 + n * 25_000, qualificationCode: '01', ...over,
 });

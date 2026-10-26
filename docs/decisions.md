@@ -170,3 +170,16 @@ can give exact purchase dates.
 **Why:** the plan's evidence labels: past purchases are verified, current intent is not, so the letter is an offer and never a claim. Keying rules to the stored version keeps old campaigns stable when a new kind or version is added.
 
 **Revisit if:** buyer letters are sent (counsel review of mailing companies at their tax-mailing address first), or confirmed intent exists (B5 inbound buyers), which would allow a different letter.
+
+## D-016 · 2026-10-26 · Buyer ranking v2: a multi-parcel deed is one purchase
+
+**Found in production (26 Oct, first import):** 1,530 of 11,474 stored purchases (13%) carry DOR qualification code 05, an arm's-length sale of several parcels on one deed, where the roll prints the deed's full price on every parcel ([DOR sale qualification codes](https://floridarevenue.com/property/Documents/salequalcodes_aft01012025.pdf)). They are 206 deeds. Under `buyer-v1` each parcel counted as a purchase with that full price: one homebuilder showed 237 "purchases" that were 45 deeds, and lots showed prices of $3–5 million each. The same names also appeared under two spellings ("D R HORTON INC" / "DR HORTON INC").
+
+**Decision (`buyer-v2`):**
+- A purchase is a deed. Code-05 rows of one company with the same sale month and price are one purchase of several parcels; every other row is its own purchase. Purchase counts, the 2-purchase minimum, recency and ZIP/type counts all use deeds.
+- Prices on a profile come from single-parcel purchases only. A multi-parcel sale is shown as "N parcels on one deed, $X total", never as a price per home. A company whose purchases are all multi-parcel has no price range.
+- Owner keys drop spaces after normalizing, so spacing variants group. Migration 0010 rewrites stored keys the same way, removes untouched buyer opportunities and re-scores every workspace.
+
+**Why:** the profile must state only what the record supports. A per-parcel copy of a bulk price is not what the company paid for that home.
+
+**Revisit if:** the Property Appraiser cross-check shows other codes (03 new construction, 06 cross-county) distort profiles, or homebuilders crowd the list (a "builder" label from use code 000 lots is possible but would be inference).

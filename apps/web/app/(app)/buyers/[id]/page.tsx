@@ -1,4 +1,4 @@
-import { monthLabel } from '@gencut/core';
+import { MULTI_PARCEL_SALE_CODE, monthLabel } from '@gencut/core';
 import { getBuyer, isServiceError, listCampaigns, listOutcomes } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -65,6 +65,16 @@ export default async function BuyerPage({
   const mailing = [p.mailing.address1, p.mailing.address2, [p.mailing.city, p.mailing.state, p.mailing.zip].filter(Boolean).join(' ')]
     .filter(Boolean)
     .join(', ');
+  // A multi-parcel sale (code 05) is one deed listed once per parcel, each with the deed's full price.
+  type Row = (typeof b.purchases)[number];
+  const deeds: Row[][] = [];
+  for (const x of b.purchases) {
+    const same = x.qualificationCode === MULTI_PARCEL_SALE_CODE
+      ? deeds.find((d) => d[0]?.qualificationCode === MULTI_PARCEL_SALE_CODE && d[0].saleYear === x.saleYear && d[0].saleMonth === x.saleMonth && d[0].price === x.price)
+      : undefined;
+    if (same) same.push(x);
+    else deeds.push([x]);
+  }
   const sources = [...new Set(b.purchases.map((x) => `${x.sourceFile}, file dated ${formatDay(x.fileDate)}`))];
   const spellings = [...new Set(b.purchases.map((x) => x.ownerNameOnRoll))];
 
@@ -80,7 +90,7 @@ export default async function BuyerPage({
           <p className="text-sm font-medium text-ink-soft">Investor buyer · {STATUS_LABEL[b.status]}</p>
           <h1 className="display mt-1 break-words text-3xl font-bold sm:text-4xl">{p.name}</h1>
           <p className="mt-1 text-ink-soft">
-            {p.purchases} verified purchases · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
+            {p.purchases} verified purchases{p.parcels && p.parcels > p.purchases ? ` (${p.parcels} parcels)` : ''} · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
             Newest evidence: {monthLabel(p.latest.year, p.latest.month)}, from the roll of {formatDay(b.rollFileDate)}
@@ -108,27 +118,58 @@ export default async function BuyerPage({
           </p>
         )}
         <ul className="mt-4 grid gap-3">
-          {b.purchases.map((x) => (
-            <li key={x.id} className="rounded-xl border border-glass-deep p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <p className="font-medium">
-                  {x.address || `Parcel ${x.parcelId}`}
-                  <span className="font-normal text-ink-soft"> · {[x.city, x.zip].filter(Boolean).join(' ')}</span>
+          {deeds.map((deed) => {
+            const x = deed[0]!;
+            if (deed.length === 1 && x.qualificationCode !== MULTI_PARCEL_SALE_CODE) {
+              return (
+                <li key={x.id} className="rounded-xl border border-glass-deep p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <p className="font-medium">
+                      {x.address || `Parcel ${x.parcelId}`}
+                      <span className="font-normal text-ink-soft"> · {[x.city, x.zip].filter(Boolean).join(' ')}</span>
+                    </p>
+                    <p className="font-semibold tabular-nums">{formatMoney(x.price)}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-ink-soft">
+                    {monthLabel(x.saleYear, x.saleMonth)} · {x.homeType}
+                    {x.units && x.units > 1 ? ` · ${x.units} units` : ''}
+                    {x.livingArea ? ` · ${x.livingArea.toLocaleString('en-US')} sq ft` : ''}
+                    {x.yearBuilt ? ` · built ${x.yearBuilt}` : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    Folio {folio(x.parcelId)} · qualification code {x.qualificationCode}
+                    {spellings.length > 1 ? ` · on the roll as “${x.ownerNameOnRoll}”` : ''}
+                  </p>
+                </li>
+              );
+            }
+            return (
+              <li key={x.id} className="rounded-xl border border-glass-deep p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-medium">
+                    Multi-parcel sale · {deed.length} {deed.length === 1 ? 'parcel' : 'parcels'} on one deed
+                  </p>
+                  <p className="font-semibold tabular-nums">{formatMoney(x.price)} total</p>
+                </div>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {monthLabel(x.saleYear, x.saleMonth)} · qualification code {x.qualificationCode}: the roll shows the deed&rsquo;s full price on each
+                  parcel, so it is not a price per home.
+                  {deed.length === 1 ? ' Its other parcels are not residential or not in the stored roll.' : ''}
                 </p>
-                <p className="font-semibold tabular-nums">{formatMoney(x.price)}</p>
-              </div>
-              <p className="mt-1 text-sm text-ink-soft">
-                {monthLabel(x.saleYear, x.saleMonth)} · {x.homeType}
-                {x.units && x.units > 1 ? ` · ${x.units} units` : ''}
-                {x.livingArea ? ` · ${x.livingArea.toLocaleString('en-US')} sq ft` : ''}
-                {x.yearBuilt ? ` · built ${x.yearBuilt}` : ''}
-              </p>
-              <p className="mt-1 text-xs text-ink-soft">
-                Folio {folio(x.parcelId)} · qualification code {x.qualificationCode}
-                {spellings.length > 1 ? ` · on the roll as “${x.ownerNameOnRoll}”` : ''}
-              </p>
-            </li>
-          ))}
+                <ul className="mt-2 grid gap-1 text-sm">
+                  {deed.map((y) => (
+                    <li key={y.id}>
+                      {y.address || `Parcel ${y.parcelId}`}
+                      <span className="text-ink-soft">
+                        {' '}
+                        · {y.zip} · {y.homeType} · folio {folio(y.parcelId)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
@@ -140,9 +181,14 @@ export default async function BuyerPage({
         <dl className="mt-3">
           <Fact label="ZIP codes bought in">{p.zips.map((z) => `${z.zip} (${z.count})`).join(', ')}</Fact>
           <Fact label="Home types">{p.homeTypes.map((t) => `${t.label} (${t.count})`).join(', ')}</Fact>
-          <Fact label="Price paid">
-            {formatMoney(p.price.min)} to {formatMoney(p.price.max)}, median {formatMoney(p.price.median)}
+          <Fact label="Price paid, single-home purchases">
+            {p.price ? `${formatMoney(p.price.min)} to ${formatMoney(p.price.max)}, median ${formatMoney(p.price.median)}` : 'None: every purchase was a multi-parcel sale'}
           </Fact>
+          {(p.multiParcelPurchases ?? 0) > 0 && (
+            <Fact label="Multi-parcel sales">
+              {p.multiParcelPurchases} of {p.purchases} purchases bought several parcels on one deed; their prices are totals, not prices per home
+            </Fact>
+          )}
           <Fact label="Tax mailing address">{mailing || '—'}</Fact>
           {spellings.length > 1 && <Fact label="Names on the roll">{spellings.join('; ')}</Fact>}
         </dl>

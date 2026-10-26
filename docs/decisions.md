@@ -142,3 +142,18 @@ can give exact purchase dates.
 **Why:** the campaign's home is not for sale; advertising it, or "how to buy it", would be misleading advertising (Fla. Stat. §475.25(1)(c)) and would expose an owner who never asked for attention. Florida ads must carry the brokerage name (Fla. Admin. Code R. 61J2-10.025). GenCut has no photos of the home, so any picture of "the house" would be invented. Human models in housing ads raise fair-housing questions, so pictures have no people. Postgres storage needs no new service or secret and keeps tenant checks in one place; images are reached only through `film-crew.ts`, so moving to object storage changes one module.
 
 **Revisit if:** image storage passes ~200 MB (move to Supabase Storage or Netlify Blobs), video is added (budget per run, provider abstraction already in `images.ts`), or posting is enabled (needs approval, platform terms and the gate).
+
+## D-014 · 2026-10-26 · Buyer Radar B1: company buyers from verified roll purchases
+
+**Decision (with Paul, 22 and 26 Oct; plan "Buyer Radar Implementation Plan"):**
+- The Buyers tab starts with investor buyers from public records. Inbound buyer leads come later (B5).
+- Source: the same Florida DOR NAL roll the seller import reads, in the same pass. A purchase is kept when the latest sale on the roll is qualified (codes 01–06), at least $10,000, dated in the roll year or the year before, and the owner of record is a company (`ownerKindOf`). Individuals, trusts and estates are never stored.
+- Purchases live in `property_transactions` (county-wide, shared, one import per roll file in `transaction_imports`). Purchases older than the newest roll's window are deleted on import.
+- A buyer is a company with 2+ purchases, grouped by a normalized name (`ownerKey`). Its profile (count, window, ZIPs, home types, prices, tax mailing address) is arithmetic over the cited purchases and nothing else. Each buyer opportunity stores `evidence` with the purchase ids; the database requires evidence for `investor_buyer` opportunities and a source record for every other type.
+- Ranking rule `buyer-v1` (purchases, recency against the roll date, focus ZIPs, home type, price range; capped at 100). It is a ranking, not a probability that the company buys again, and is shown with its version.
+- Outcomes are recorded and reported per opportunity type, so buyer results never mix with seller results. Outcome list extended with `qualified_conversation`, `offer` and `closed`.
+- The page states what the records do not show: current intent, related companies, other counties, contact details. Nothing is sent; no buyer campaign until B2.
+
+**Why:** a qualified sale to a company is a verified fact on a public record; anything about what the company wants next is inference and is labelled as such. Companies only, because building purchase histories of private individuals isn't needed for the investor use case and raises privacy risk. Reusing the roll avoids a new source, licence or secret. One pass keeps the worker within its GitHub Actions budget.
+
+**Revisit if:** the Property Appraiser cross-check (plan criterion 3) shows the 2026 roll does not list buyers as owners on recent sales; deed records become available (Clerk terms or a licensed feed) for faster alerts (B4); or related companies need grouping (registered agent or mailing address — inference, must be labelled).

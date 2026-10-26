@@ -37,9 +37,10 @@ changes to prompts, scoring weights or strategies become **experiments** in the 
 (hypothesis, change, baseline, metrics, result, confidence, deployment status) and reach
 production only after human approval.
 
-## Status (23 Oct 2026)
+## Status (26 Oct 2026)
 
 - **Scout:** deterministic scoring, `seller-v3` (`packages/core/src/opportunity/scoring.ts`, `docs/scoring.md`).
+- **Buyer Radar (26 Oct 2026):** deterministic, no model calls. Company purchases from the roll, grouped and ranked by `buyer-v1` (`packages/core/src/buyers/buyer-radar.ts`, D-014). Profiles are computed from cited purchases only; current intent is never inferred.
 - **Copy + QC (campaign drafts):** one model call through the ModelRouter (`packages/services/src/models.ts`), with the prompt and the QC checks in `packages/core/src/campaign/draft.ts`. QC is deterministic: grounding, fair housing, sensitivity and brokerage name. Every call is logged in `model_runs` with cost.
 - **Film Crew, slice 1 (23 Oct 2026):** Copywriter (social post, `packages/core/src/campaign/media.ts`, checked like letters plus "never names the property or owner") and Photographer (one illustrative neighborhood picture through `packages/services/src/images.ts`, Google by default). Runs in a background function within a $1 media budget per campaign; nothing is posted.
 - Director, Research, Strategy as separate agents, and video: not built yet.

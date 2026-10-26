@@ -35,6 +35,20 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
   `source_records` row; one per `subject_key` (e.g. `fl-dor-nal:23:<parcel>`) and type, so a
   newer roll updates it instead of duplicating it.
 
+- `property_transactions` — county-wide qualified purchases by companies (Buyer Radar):
+  parcel, situs, home type, sale year/month, price, qualification code, owner name and
+  normalized `owner_key`, tax mailing address, source file and date. Shared public data;
+  unique per parcel, sale and price. Never individuals, trusts or estates.
+- `transaction_imports` — one row per county roll file read for purchases (`importing` →
+  `ready` / `failed`, rows read and kept).
+- `workspace_discovery.buyer_*` — buyer scoring status, file date, companies considered and
+  kept, last error.
+- `opportunities.type` — `potential_seller`, `investor_buyer` (plus `responded_to_ad`,
+  `sphere` reserved). A buyer has no source record; it has `evidence` (purchase ids, the
+  computed profile, roll file date), enforced by `opportunities_cites_source`.
+- `opportunity_outcomes` — contacted, no response, responded, not interested, qualified
+  conversation, appointment, offer, listing, closed, wrong address. Reports group by type.
+
 ## Campaigns and outreach
 
 - `campaigns` — status `generating` → `review` → `approved` → `active` → `completed`, plus
@@ -61,4 +75,4 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 
 ## Coming next
 
-`agent_runs`; buyer prospects (Buyers tab); M6 `experiments`.
+`agent_runs`; buyer campaign letters (B2); seller–buyer matches (B3); M6 `experiments`.

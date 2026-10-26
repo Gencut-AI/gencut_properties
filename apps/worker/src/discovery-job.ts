@@ -7,6 +7,7 @@
  */
 import {
   type PriorRoll,
+  type PropertyTransaction,
   type RollChoice,
   type StoredParcel,
   flCounty,
@@ -14,11 +15,19 @@ import {
   missingColumns,
   nalRowToParcel,
   nalRowToPrior,
+  nalRowToTransaction,
   rowZip,
 } from '@gencut/core';
 import {
   type Sql,
   claimCoverage,
+  claimTransactionImport,
+  completeTransactionImport,
+  failTransactionImport,
+  scoreWorkspaceBuyers,
+  storeTransactions,
+  transactionImportDue,
+  workspacesToScoreBuyers,
   completeCoverage,
   countiesWithCoverageRequests,
   coverageToImport,
@@ -36,7 +45,10 @@ import type { RollSource } from './dor.ts';
 export interface DiscoveryRun {
   backfilled: number;
   imports: { county: string; file: string | null; zips: string[]; parcels: number; error?: string }[];
+  /** County-wide company purchases read for Buyer Radar, once per roll file. */
+  transactions: { county: string; file: string; kept: number; error?: string }[];
   scored: { workspaceId: string; kept?: number; error?: string }[];
+  buyers: { workspaceId: string; kept?: number; error?: string }[];
   pruned: number;
 }
 
@@ -48,7 +60,7 @@ export async function runDiscovery(opts: {
 }): Promise<DiscoveryRun> {
   const { sql, source, asOf } = opts;
   const log = opts.log ?? (() => {});
-  const run: DiscoveryRun = { backfilled: 0, imports: [], scored: [], pruned: 0 };
+  const run: DiscoveryRun = { backfilled: 0, imports: [], transactions: [], scored: [], buyers: [], pruned: 0 };
 
   run.backfilled = await requestMissingDiscovery(sql);
   if (run.backfilled) log(`requested discovery for ${run.backfilled} existing profile(s)`);
@@ -74,19 +86,31 @@ export async function runDiscovery(opts: {
       continue;
     }
     const zips = await coverageToImport(sql, county, choice.file.name);
-    if (zips.length === 0) continue;
-    log(`${name}: importing ${zips.length} ZIP code(s) from "${choice.file.name}"`);
-    await claimCoverage(sql, county, zips);
+    const wantTransactions = await transactionImportDue(sql, county, choice.file.name);
+    if (zips.length === 0 && !wantTransactions) continue;
+    if (zips.length) {
+      log(`${name}: importing ${zips.length} ZIP code(s) from "${choice.file.name}"`);
+      await claimCoverage(sql, county, zips);
+    }
+    if (wantTransactions) {
+      log(`${name}: reading company purchases from "${choice.file.name}"`);
+      await claimTransactionImport(sql, county, choice.file.name, choice.fileDate);
+    }
     try {
       const wanted = new Set(zips);
-      let prior = await readPriorRoll(source, choice, wanted, county, log);
-      if (prior.size === 0) {
-        prior = await storedPriorRolls(sql, county, zips, choice.year - 1);
-        if (prior.size) log(`county ${county}: using ${prior.size} stored records from the ${choice.year - 1} roll as the previous roll`);
+      let prior = new Map<string, PriorRoll>();
+      if (zips.length) {
+        prior = await readPriorRoll(source, choice, wanted, county, log);
+        if (prior.size === 0) {
+          prior = await storedPriorRolls(sql, county, zips, choice.year - 1);
+          if (prior.size) log(`county ${county}: using ${prior.size} stored records from the ${choice.year - 1} roll as the previous roll`);
+        }
       }
       const byZip = new Map<string, StoredParcel[]>(zips.map((z) => [z, []]));
+      const purchases: PropertyTransaction[] = [];
       let index: Map<string, number> | null = null;
       let rows = 0;
+      // One pass over the file serves both the ZIP import and the county-wide purchases.
       await source.rows(choice, (fields) => {
         if (!index) {
           index = headerIndex(fields);
@@ -95,6 +119,10 @@ export async function runDiscovery(opts: {
           return;
         }
         rows++;
+        if (wantTransactions) {
+          const t = nalRowToTransaction(fields, index);
+          if (t && t.countyCode === county) purchases.push(t);
+        }
         const zip = rowZip(fields, index);
         if (!wanted.has(zip)) return;
         const parcel = nalRowToParcel(fields, index, prior.get(fields[index.get('PARCEL_ID') ?? -1]?.trim() ?? '') ?? null);
@@ -102,25 +130,37 @@ export async function runDiscovery(opts: {
       });
       if (!index) throw new Error('The roll file is empty.');
 
-      let parcels = 0;
-      for (const [, list] of byZip) {
-        await storeParcels(sql, choice.fileDate, list);
-        parcels += list.length;
+      if (zips.length) {
+        let parcels = 0;
+        for (const [, list] of byZip) {
+          await storeParcels(sql, choice.fileDate, list);
+          parcels += list.length;
+        }
+        await completeCoverage(
+          sql,
+          county,
+          zips.map((zip) => ({ zip, parcelCount: byZip.get(zip)?.length ?? 0 })),
+          { sourceFile: choice.file.name, rollLabel: choice.label, fileDate: choice.fileDate },
+        );
+        run.imports.push({ county, file: choice.file.name, zips, parcels });
+        log(`${name}: read ${rows} rows, kept ${parcels} residential parcels in ${zips.join(', ')}; ${prior.size} matched on the previous roll`);
       }
-      await completeCoverage(
-        sql,
-        county,
-        zips.map((zip) => ({ zip, parcelCount: byZip.get(zip)?.length ?? 0 })),
-        { sourceFile: choice.file.name, rollLabel: choice.label, fileDate: choice.fileDate },
-      );
-      run.imports.push({ county, file: choice.file.name, zips, parcels });
-      log(
-        `${name}: read ${rows} rows, kept ${parcels} residential parcels in ${zips.join(', ')}; ${prior.size} matched on the previous roll`,
-      );
+      if (wantTransactions) {
+        await storeTransactions(sql, choice.file.name, choice.fileDate, purchases);
+        await completeTransactionImport(sql, county, choice.file.name, { rowsRead: rows, rowsKept: purchases.length, minSaleYear: choice.year - 1 });
+        run.transactions.push({ county, file: choice.file.name, kept: purchases.length });
+        log(`${name}: kept ${purchases.length} qualified company purchases from ${rows} rows`);
+      }
     } catch (e) {
       const error = message(e);
-      await failCoverage(sql, county, zips, error);
-      run.imports.push({ county, file: choice.file.name, zips, parcels: 0, error });
+      if (zips.length) {
+        await failCoverage(sql, county, zips, error);
+        run.imports.push({ county, file: choice.file.name, zips, parcels: 0, error });
+      }
+      if (wantTransactions) {
+        await failTransactionImport(sql, county, choice.file.name, error);
+        run.transactions.push({ county, file: choice.file.name, kept: 0, error });
+      }
       log(`${name}: import failed: ${error}`);
     }
   }
@@ -133,6 +173,17 @@ export async function runDiscovery(opts: {
     } catch (e) {
       run.scored.push({ workspaceId, error: message(e) });
       log(`workspace ${workspaceId}: scoring failed: ${message(e)}`);
+    }
+  }
+
+  for (const workspaceId of await workspacesToScoreBuyers(sql)) {
+    try {
+      const b = await scoreWorkspaceBuyers(sql, workspaceId);
+      run.buyers.push({ workspaceId, kept: b.kept });
+      log(`workspace ${workspaceId}: ${b.eligible} buyers eligible, ${b.kept} kept`);
+    } catch (e) {
+      run.buyers.push({ workspaceId, error: message(e) });
+      log(`workspace ${workspaceId}: buyer scoring failed: ${message(e)}`);
     }
   }
 
@@ -191,5 +242,5 @@ function message(e: unknown): string {
 }
 
 export function hasErrors(run: DiscoveryRun): boolean {
-  return run.imports.some((i) => i.error) || run.scored.some((s) => s.error);
+  return run.imports.some((i) => i.error) || run.transactions.some((t) => t.error) || run.scored.some((s) => s.error) || run.buyers.some((b) => b.error);
 }

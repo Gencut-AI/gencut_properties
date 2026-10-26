@@ -57,3 +57,24 @@ beyond being in focus. A workspace keeps its best **100**. Ties go to the wider 
 A new rule gets a new version string. Its tests must keep every case above, including the
 revaluation case from the cross-check. Re-scoring happens automatically for workspaces whose
 records or profile change; the score shown always names its version.
+
+## Buyer ranking (`buyer-v1`)
+
+Ranks companies with two or more qualified purchases on the roll (see D-014). Every input is
+counted from cited purchases.
+
+| Reason | Points |
+| --- | --- |
+| Purchases: 2 / 3–4 / 5+ | 30 / 40 / 50 |
+| Latest purchase within 6 / 12 months of the roll date | +20 / +10 |
+| Any purchase in the agent's focus ZIPs | +15 |
+| Half or more of purchases in focus ZIPs | +10 |
+| Bought the agent's home types | +10 |
+| Median price inside the agent's range | +5 |
+
+Capped at 100. It ranks verified buying and fit; it is not the chance that the company buys
+again, and is reported separately from seller scores (`outcomeReport(…, 'investor_buyer')`).
+Known limits: the roll lists only the latest two sales per parcel, so a company that bought
+and resold within the window can be undercounted; related companies with different names are
+counted separately; name grouping can join two unrelated companies with the same normalized
+name.

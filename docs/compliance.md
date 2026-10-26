@@ -56,6 +56,11 @@ Nothing is posted; publishing will be a separate, approved channel.
 | --- | --- | --- | --- |
 | Florida DOR NAL assessment roll | Public record, Fla. Stat. ch. 119; free from the DOR data portal | Residential parcels in requested ZIPs: owner of record, tax mailing address, situs, values, homestead flag, last roll sale | Discovery and research only. No phone or email; contact needs consent or another lawful basis per channel (gate) |
 
+| Florida DOR NAL roll — sales (Buyer Radar) | Same | Qualified purchases by companies, county-wide: parcel, situs, home type, month, price, owner name, tax mailing address | Research on a company's past purchases only. Not evidence of current intent; no contact details; any outreach needs approval and a lawful basis per channel |
+
+Buyer Radar never stores purchases by individuals, trusts or estates. Buyer pages say what
+the records do not show (current intent, related companies, other counties, contact details).
+
 Owner records made confidential under Fla. Stat. 119.071 appear without a name and are not
 imported. Institutional owners (charitable, religious, educational, government and similar
 exemptions) are not imported. Scoring uses property facts only — never protected

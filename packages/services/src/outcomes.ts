@@ -3,6 +3,7 @@
  * agent. Each outcome keeps the score and scoring rule that ranked the
  * opportunity at the time, so later rules can be judged against reality.
  */
+import { APPOINTMENT_OR_BETTER, DEAL_OUTCOMES, OUTCOMES, type OpportunityType, type Outcome, REPLIED_OUTCOMES } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
 import type { RequestContext } from './context.ts';
@@ -10,10 +11,6 @@ import type { Db, Sql } from './db.ts';
 import { ServiceError } from './errors.ts';
 import { requireMembershipFor } from './membership.ts';
 
-export const OUTCOMES = ['contacted', 'no_response', 'responded', 'not_interested', 'appointment', 'listing', 'wrong_address'] as const;
-export type Outcome = (typeof OUTCOMES)[number];
-/** Outcomes that mean the owner replied. */
-const REPLIED: readonly Outcome[] = ['responded', 'not_interested', 'appointment', 'listing'];
 /** A report is shown only once this many opportunities have outcomes. */
 export const OUTCOME_REPORT_MINIMUM = 20;
 
@@ -92,11 +89,15 @@ export interface OutcomeBand {
   readonly band: string;
   readonly opportunities: number;
   readonly replied: number;
+  /** Appointment, offer, listing or closed. */
   readonly appointments: number;
+  /** Listing taken or transaction closed. */
   readonly listings: number;
 }
 
 export interface OutcomeReport {
+  /** Which kind of opportunity the report covers; seller and buyer results are never mixed. */
+  readonly type: OpportunityType;
   /** Opportunities with at least one outcome. */
   readonly opportunities: number;
   readonly ready: boolean;
@@ -110,25 +111,35 @@ export interface OutcomeReport {
  * once OUTCOME_REPORT_MINIMUM opportunities have outcomes; smaller samples say
  * nothing about the scores.
  */
-export async function outcomeReport(db: Db, ctx: RequestContext, workspaceId: string): Promise<OutcomeReport> {
+export async function outcomeReport(
+  db: Db,
+  ctx: RequestContext,
+  workspaceId: string,
+  type: OpportunityType = 'potential_seller',
+): Promise<OutcomeReport> {
   await requireMembershipFor(db, ctx, workspaceId);
   const rows = await db<{ opportunity_id: string; score: number; scoring_version: string; outcomes: Outcome[] }[]>`
-    SELECT opportunity_id, max(score)::int AS score, max(scoring_version) AS scoring_version, array_agg(outcome) AS outcomes
-    FROM opportunity_outcomes WHERE workspace_id = ${workspaceId}
-    GROUP BY opportunity_id
+    SELECT x.opportunity_id, max(x.score)::int AS score, max(x.scoring_version) AS scoring_version, array_agg(x.outcome) AS outcomes
+    FROM opportunity_outcomes x JOIN opportunities o ON o.id = x.opportunity_id
+    WHERE x.workspace_id = ${workspaceId} AND o.type = ${type}
+    GROUP BY x.opportunity_id
   `;
-  const bandOf = (s: number) => (s >= 85 ? '85–100' : s >= 75 ? '75–84' : s >= 65 ? '65–74' : '55–64');
+  // Seller scores start at the discovery minimum (55); buyer scores at 30 (two purchases).
+  const names = type === 'investor_buyer' ? ['85–100', '70–84', '50–69', '30–49'] : ['85–100', '75–84', '65–74', '55–64'];
+  const floors = type === 'investor_buyer' ? [85, 70, 50, 0] : [85, 75, 65, 0];
+  const bandOf = (s: number) => names.at(floors.findIndex((f) => s >= f)) ?? names.at(-1)!;
   const bands = new Map<string, { opportunities: number; replied: number; appointments: number; listings: number }>();
-  for (const b of ['85–100', '75–84', '65–74', '55–64']) bands.set(b, { opportunities: 0, replied: 0, appointments: 0, listings: 0 });
+  for (const b of names) bands.set(b, { opportunities: 0, replied: 0, appointments: 0, listings: 0 });
   for (const r of rows) {
     const b = bands.get(bandOf(r.score));
     if (!b) continue;
     b.opportunities++;
-    if (r.outcomes.some((o) => REPLIED.includes(o))) b.replied++;
-    if (r.outcomes.includes('appointment') || r.outcomes.includes('listing')) b.appointments++;
-    if (r.outcomes.includes('listing')) b.listings++;
+    if (r.outcomes.some((o) => REPLIED_OUTCOMES.includes(o))) b.replied++;
+    if (r.outcomes.some((o) => APPOINTMENT_OR_BETTER.includes(o))) b.appointments++;
+    if (r.outcomes.some((o) => DEAL_OUTCOMES.includes(o))) b.listings++;
   }
   return {
+    type,
     opportunities: rows.length,
     ready: rows.length >= OUTCOME_REPORT_MINIMUM,
     minimum: OUTCOME_REPORT_MINIMUM,

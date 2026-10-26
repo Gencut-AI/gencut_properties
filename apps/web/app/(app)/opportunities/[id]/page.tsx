@@ -33,8 +33,11 @@ const OUTCOME_LABEL: Record<string, string> = {
   no_response: 'No response',
   responded: 'Owner responded',
   not_interested: 'Not interested',
+  qualified_conversation: 'Qualified conversation',
   appointment: 'Appointment set',
+  offer: 'Offer made',
   listing: 'Listing signed',
+  closed: 'Sale closed',
   wrong_address: 'Wrong address',
 };
 

@@ -8,6 +8,7 @@ import {
   createDb,
   ensureWorkspace,
   getDiscoveryStatus,
+  listBuyers,
   listOpportunities,
   saveBusinessProfile,
 } from '@gencut/services';
@@ -188,5 +189,40 @@ describe('discovery job', () => {
     assert.ok(lines.some((l) => l.includes('stored records from the 2025 roll')));
     const [opp] = await listOpportunities(sql, u, workspaceId);
     assert.ok(opp?.reasons.some((r) => r.code === 'long_held_strong'), JSON.stringify(opp?.reasons.map((r) => r.code)));
+  });
+  it('reads county-wide company purchases in the same pass, once per roll file, and scores buyers', async () => {
+    const u = user();
+    const { workspaceId } = await ensureWorkspace(sql, u);
+    await saveBusinessProfile(sql, u, workspaceId, profile(['33180']));
+    const H = [...HEADER, 'QUAL_CD1', 'SALE_PRC1', 'SALE_YR1', 'SALE_MO1'];
+    const buy = (id: string, zip: string, owner: string, month: string, code = '01') => [
+      '23', id, '2026', '001', '600000', '600000', '600000', '', owner, '1 SAMPLE PLAZA', 'MIAMI', 'FL', `${id} EXAMPLE DR`, 'MIAMI', zip,
+      code, '550000', '2025', month,
+    ];
+    const file = 'Dade 23 Final NAL 2026.zip';
+    const source = fakeSource(
+      [
+        buy('T1', '33139', 'SAMPLE HOMES LLC', '3'),
+        buy('T2', '33141', 'SAMPLE HOMES LLC', '5'),
+        buy('T3', '33141', 'SAMPLE HOMES LLC', '6', '11'), // disqualified transfer: not a purchase
+        buy('T4', '33139', 'JANE SAMPLE', '4'), // an individual: never stored
+        buy('T5', '33139', 'OTHER CO LLC', '7'), // one purchase: not a buyer
+      ],
+      { header: H, file },
+    );
+    const lines: string[] = [];
+    const run = await runDiscovery({ sql, source, asOf: ASOF, log: (l) => lines.push(l) });
+    assert.equal(hasErrors(run), false);
+    assert.deepEqual(run.transactions, [{ county: '23', file, kept: 3 }]);
+    assert.equal(source.reads, 1, 'one pass for ZIPs and purchases');
+    const [individuals] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM property_transactions WHERE owner_name = 'JANE SAMPLE'`;
+    assert.equal(individuals?.n, 0);
+    const buyers = await listBuyers(sql, u, workspaceId);
+    assert.deepEqual(buyers.map((b) => [b.profile.name, b.profile.purchases]), [['SAMPLE HOMES LLC', 2]]);
+    assert.ok(lines.every((l) => !l.includes('SAMPLE HOMES') && !l.includes('EXAMPLE DR')), 'logs carry no names or addresses');
+
+    const again = await runDiscovery({ sql, source, asOf: ASOF });
+    assert.deepEqual(again.transactions, [], 'the same roll file is read once');
+    assert.equal(source.reads, 1);
   });
 });

@@ -3,20 +3,35 @@
 import { useActionState } from 'react';
 import { type FormState, recordOutcomeAction } from './actions.ts';
 
-const OUTCOMES = [
+const SELLER_OUTCOMES = [
   ['contacted', 'Letter sent / contacted'],
   ['no_response', 'No response'],
   ['responded', 'Owner responded'],
   ['not_interested', 'Not interested'],
+  ['qualified_conversation', 'Qualified conversation'],
   ['appointment', 'Appointment set'],
   ['listing', 'Listing signed'],
+  ['closed', 'Sale closed'],
+  ['wrong_address', 'Wrong address'],
+] as const;
+
+const BUYER_OUTCOMES = [
+  ['contacted', 'Letter sent / contacted'],
+  ['no_response', 'No response'],
+  ['responded', 'Buyer responded'],
+  ['not_interested', 'Not interested'],
+  ['qualified_conversation', 'Qualified conversation'],
+  ['appointment', 'Meeting set'],
+  ['offer', 'Offer made'],
+  ['closed', 'Purchase closed'],
   ['wrong_address', 'Wrong address'],
 ] as const;
 
 const field = 'h-11 w-full rounded-lg border border-glass-deep bg-white px-3 text-[0.95rem]';
 
 /** Record what happened. Kept with the score that ranked this opportunity, to check the scoring later. */
-export function OutcomeForm({ opportunityId, today }: { opportunityId: string; today: string }) {
+export function OutcomeForm({ opportunityId, today, kind = 'seller' }: { opportunityId: string; today: string; kind?: 'seller' | 'buyer' }) {
+  const OUTCOMES = kind === 'buyer' ? BUYER_OUTCOMES : SELLER_OUTCOMES;
   const [state, action, pending] = useActionState<FormState, FormData>(recordOutcomeAction, { status: 'idle' });
   const err = state.status === 'error' ? state.fields : {};
   return (

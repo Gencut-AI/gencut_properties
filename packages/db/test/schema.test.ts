@@ -11,6 +11,8 @@ import {
   MEDIA_ASSET_KINDS,
   MEDIA_CONTENT_TYPES,
   MEDIA_STATES,
+  OPPORTUNITY_TYPES,
+  OUTCOMES,
   OUTREACH_STATES,
   type OutreachState,
   isLegalOutreachTransition,
@@ -241,6 +243,37 @@ describe('schema matches the domain model', () => {
     expectSqlError(db, asset('neighborhood_image', 'upload', { campaign, illustrative: true }));
     expectSqlError(db, asset('headshot', 'generated', { provider: 'google' }));
     db.query(`INSERT INTO model_runs (workspace_id, purpose, role, provider, model, prompt_version, status) VALUES ('${workspace}', 'x', 'image', 'google', 'm', 'v', 'ok')`);
+  });
+
+  it('stores buyers as opportunities that cite purchases, and accepts every type and outcome from core', () => {
+    for (const t of OPPORTUNITY_TYPES) {
+      const evidence = t === 'investor_buyer' ? `'{"transactionIds":[]}'::jsonb` : 'NULL';
+      const record =
+        t === 'investor_buyer'
+          ? 'NULL'
+          : `'${db.query(`INSERT INTO source_records (source_id, external_id, file_date, payload)
+                          SELECT source_id, 'types-${t}', '2026-07-27', '{}' FROM source_records LIMIT 1 RETURNING id`)}'`;
+      db.query(`INSERT INTO opportunities (workspace_id, source_record_id, subject_key, type, score, confidence, reasons, scoring_version, evidence)
+                VALUES ('${workspace}', ${record}, 'types-${t}', '${t}', 60, 1, '[]', 'v', ${evidence})`);
+    }
+    expectSqlError(db, `INSERT INTO opportunities (workspace_id, subject_key, type, score, confidence, reasons, scoring_version)
+                        VALUES ('${workspace}', 'no-evidence', 'investor_buyer', 60, 1, '[]', 'v')`);
+    expectSqlError(db, `INSERT INTO opportunities (workspace_id, subject_key, type, score, confidence, reasons, scoring_version, evidence)
+                        VALUES ('${workspace}', 'seller-without-record', 'potential_seller', 60, 1, '[]', 'v', '{}')`);
+    const opp = db.query(`SELECT id FROM opportunities WHERE workspace_id = '${workspace}' AND type = 'investor_buyer' LIMIT 1`);
+    for (const o of OUTCOMES) {
+      db.query(`INSERT INTO opportunity_outcomes (workspace_id, opportunity_id, outcome, score, scoring_version, occurred_on, recorded_by)
+                VALUES ('${workspace}', '${opp}', '${o}', 60, 'buyer-v1', '2026-10-01', '${USER}')`);
+    }
+    const sale = (code: string, price: number, month = 3) =>
+      `INSERT INTO property_transactions (county_code, parcel_id, roll_year, source_file, file_date, situs_address, situs_zip, use_code,
+         owner_name, owner_key, owner_mailing, sale_year, sale_month, price, qualification_code)
+       VALUES ('23', 'P1', 2026, 'f', '2026-07-27', '1 EXAMPLE DR', '33180', '001', 'A LLC', 'A LLC', '{}', 2025, ${month}, ${price}, '${code}')`;
+    db.query(sale('01', 500000));
+    expectSqlError(db, sale('01', 500000));
+    expectSqlError(db, sale('11', 400000));
+    expectSqlError(db, sale('01', 100));
+    expectSqlError(db, sale('01', 450000, 13));
   });
 
   it('enables row-level security on every table, so the public Data API sees nothing', () => {

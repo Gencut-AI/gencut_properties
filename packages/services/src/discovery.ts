@@ -71,7 +71,8 @@ export async function requestDiscovery(db: Db, workspaceId: string, market: Mark
   }
   await db`
     INSERT INTO workspace_discovery (workspace_id) VALUES (${workspaceId})
-    ON CONFLICT (workspace_id) DO UPDATE SET status = 'pending', requested_at = now(), error = NULL
+    ON CONFLICT (workspace_id) DO UPDATE SET status = 'pending', requested_at = now(), error = NULL,
+      buyer_status = CASE WHEN workspace_discovery.buyer_status = 'scoring' THEN 'scoring' ELSE 'pending' END
   `;
 }
 

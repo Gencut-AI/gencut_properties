@@ -212,7 +212,7 @@ export async function listOpportunities(
 export async function countOpportunities(db: Db, ctx: RequestContext, workspaceId: string): Promise<Record<FeedView, number>> {
   await requireMembershipFor(db, ctx, workspaceId);
   const rows = await db<{ status: OpportunityStatus; n: number }[]>`
-    SELECT status, count(*)::int AS n FROM opportunities WHERE workspace_id = ${workspaceId} GROUP BY status
+    SELECT status, count(*)::int AS n FROM opportunities WHERE workspace_id = ${workspaceId} AND type = 'potential_seller' GROUP BY status
   `;
   const n = (statuses: OpportunityStatus[]) => rows.filter((r) => statuses.includes(r.status)).reduce((a, r) => a + r.n, 0);
   return { active: n(VIEW_STATUSES.active), saved: n(VIEW_STATUSES.saved), dismissed: n(VIEW_STATUSES.dismissed) };

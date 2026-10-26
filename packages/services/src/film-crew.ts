@@ -148,12 +148,16 @@ export async function startCampaignMedia(sql: Sql, ctx: RequestContext, workspac
     `;
     if (!perm?.ok) throw new ServiceError('forbidden', 'Preparing campaigns is turned off for this workspace.');
     if (!z.uuid().safeParse(campaignId).success) throw new ServiceError('not_found', 'That campaign does not exist.');
-    const [c] = await tx<{ status: string; media_status: MediaState; opportunity_id: string | null }[]>`
-      SELECT status, media_status, opportunity_id FROM campaigns WHERE workspace_id = ${workspaceId} AND id = ${campaignId} FOR UPDATE
+    const [c] = await tx<{ status: string; media_status: MediaState; opportunity_id: string | null; opportunity_type: string | null }[]>`
+      SELECT c.status, c.media_status, c.opportunity_id, o.type AS opportunity_type
+      FROM campaigns c LEFT JOIN opportunities o ON o.id = c.opportunity_id
+      WHERE c.workspace_id = ${workspaceId} AND c.id = ${campaignId} FOR UPDATE OF c
     `;
     if (!c) throw new ServiceError('not_found', 'That campaign does not exist.');
     if (c.status !== 'review' && c.status !== 'approved') throw new ServiceError('invalid', 'Media is made once the letter is drafted.');
     if (!c.opportunity_id) throw new ServiceError('invalid', 'This campaign has no opportunity to make media for.');
+    // The post markets the agent to homeowners around a seller's home; a buyer campaign has no such area.
+    if (c.opportunity_type !== 'potential_seller') throw new ServiceError('invalid', 'Social posts are made for seller campaigns only.');
     if (c.media_status === 'generating') return { started: false };
     const budget = checkMediaBudget(await mediaSpentUsd(tx, campaignId), FILM_CREW_ESTIMATE_USD);
     if (!budget.ok) throw new ServiceError('invalid', budget.message);

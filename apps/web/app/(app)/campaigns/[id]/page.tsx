@@ -40,8 +40,11 @@ export default async function CampaignPage({
   return (
     <article className="mx-auto flex max-w-3xl flex-col gap-8">
       {c.opportunityId && (
-        <Link href={`/opportunities/${c.opportunityId}`} className="min-h-11 content-center text-sm font-medium text-bay-deep underline-offset-4 hover:underline">
-          ← Opportunity
+        <Link
+          href={c.audience === 'company' ? `/buyers/${c.opportunityId}` : `/opportunities/${c.opportunityId}`}
+          className="min-h-11 content-center text-sm font-medium text-bay-deep underline-offset-4 hover:underline"
+        >
+          {c.audience === 'company' ? '← Buyer' : '← Opportunity'}
         </Link>
       )}
       <header>
@@ -171,10 +174,13 @@ export default async function CampaignPage({
                 </li>
               ))}
             </ol>
-            <p className="mt-2 text-sm text-ink-soft">Call reminders are only for owners you have a lawful basis to call; GenCut will check before any call task is offered.</p>
+            <p className="mt-2 text-sm text-ink-soft">
+              Call reminders are only for {c.audience === 'company' ? 'companies' : 'owners'} you have a lawful basis to call; GenCut will check before any
+              call task is offered.
+            </p>
           </section>
 
-          {(c.status === 'review' || c.status === 'approved') && profile && (
+          {(c.status === 'review' || c.status === 'approved') && profile && c.audience === 'owner' && (
             <FilmCrew
               campaignId={c.id}
               media={media}

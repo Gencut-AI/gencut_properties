@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
-import { type PropertyTransaction, buyerProfile, ownerKey } from '@gencut/core';
+import { BUYER_LETTER_PROMPT_VERSION, type CampaignDraft, type PropertyTransaction, buyerProfile, ownerKey } from '@gencut/core';
 import { migrateUp } from '../../db/src/migrate.ts';
 import { type TestDb, createTestDb } from '../../db/test/helpers.ts';
 import {
+  ModelRouter,
+  RecordedProvider,
   type RequestContext,
   ServiceError,
   type Sql,
@@ -13,6 +15,11 @@ import {
   countBuyers,
   countOpportunities,
   createDb,
+  generateCampaignDraft,
+  getCampaign,
+  startCampaignDraft,
+  startCampaignMedia,
+  updateCampaignLetter,
   ensureWorkspace,
   getBuyer,
   getBuyerDiscoveryStatus,
@@ -52,6 +59,21 @@ const PURCHASES: PropertyTransaction[] = [
   // One purchase only: not a buyer.
   sale('GAMMA LLC', 5),
 ];
+
+// A synthetic model reply: one letter that claims the company is buying (rejected), then a clean one.
+const letter = (paragraph: string): CampaignDraft => ({
+  title: 'Introduction to Alpha Homes',
+  strategy: { summary: 'Introduce Ana to the company.', angle: 'Local single-family opportunities.', reasons: [{ text: 'It bought single family homes in 33180.', factKeys: ['company.zips'] }] },
+  letter: {
+    greeting: 'Dear Alpha Homes, L.L.C. team,',
+    paragraphs: [paragraph, 'Would you be open to a short call?'],
+    closing: 'Kind regards,',
+    signature: ['Ana Test', 'Example Bay Realty LLC'],
+  },
+  followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter.' }],
+  factsUsed: ['company.name', 'company.zips', 'agent.name', 'agent.brokerage'],
+});
+const reply = (d: CampaignDraft) => ({ text: JSON.stringify(d), usage: { inputTokens: 900, outputTokens: 500, cacheReadTokens: 0 } });
 
 function user(): RequestContext {
   const id = randomUUID();
@@ -152,6 +174,44 @@ describe('Buyer Radar services', () => {
     assert.deepEqual(buyersReport.scoringVersions, ['buyer-v1']);
     assert.equal(buyersReport.bands[0]?.replied, 1);
     assert.equal((await outcomeReport(sql, u, workspaceId)).opportunities, 0, 'seller report excludes buyers');
+  });
+
+  it('drafts a buyer letter from patterns only, checked by the buyer rules, saved as a DRAFT', async () => {
+    const { u, workspaceId } = await workspace();
+    await scoreWorkspaceBuyers(sql, workspaceId);
+    const [alpha] = await listBuyers(sql, u, workspaceId);
+    assert.ok(alpha);
+    const { campaignId, created } = await startCampaignDraft(sql, u, workspaceId, alpha.id);
+    assert.equal(created, true);
+
+    const provider = new RecordedProvider([
+      reply(letter('I know you are actively buying in 33180.')),
+      reply(letter('I work with single family owners in 33180 and would be glad to share opportunities there as they come up.')),
+    ]);
+    let t = 0;
+    const router = new ModelRouter({ providers: { anthropic: provider }, now: () => (t += 1000) });
+    assert.equal(await generateCampaignDraft(sql, campaignId, router), 'review');
+
+    const prompt = provider.calls[0]?.request.user ?? '';
+    assert.match(prompt, /company\.zips .*33180/);
+    for (const secret of ['EXAMPLE DR', '510,000', '2026', 'SAMPLE PLAZA']) assert.ok(!prompt.includes(secret), `prompt must not include ${secret}`);
+    assert.match(provider.calls[1]?.request.user ?? '', /actively buying/, 'the retry lists the rejected claim');
+
+    const c = await getCampaign(sql, u, workspaceId, campaignId);
+    assert.equal(c.audience, 'company');
+    assert.equal(c.promptVersion, BUYER_LETTER_PROMPT_VERSION);
+    assert.equal(c.letterState, 'DRAFT');
+    assert.equal(c.usage.calls, 2);
+    assert.ok(c.usage.costUsd > 0 && c.usage.costUsd < 0.03, `cost ${c.usage.costUsd}`);
+    const [runs] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM model_runs WHERE campaign_id = ${campaignId} AND prompt_version = ${BUYER_LETTER_PROMPT_VERSION}`;
+    assert.equal(runs?.n, 2);
+
+    // Edits are re-checked by the buyer rules, and buyer campaigns get no social post.
+    await assert.rejects(
+      updateCampaignLetter(sql, u, workspaceId, campaignId, { ...c.draft!.letter, paragraphs: ['I saw your recent purchases in 33180.'] }),
+      (e) => e instanceof ServiceError && e.code === 'invalid',
+    );
+    await assert.rejects(startCampaignMedia(sql, u, workspaceId, campaignId), (e) => e instanceof ServiceError && /seller campaigns only/.test(e.message));
   });
 
   it('keeps workspaces apart', async () => {

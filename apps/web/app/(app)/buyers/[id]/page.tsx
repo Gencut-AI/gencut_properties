@@ -1,12 +1,15 @@
 import { monthLabel } from '@gencut/core';
-import { getBuyer, isServiceError, listOutcomes } from '@gencut/services';
+import { getBuyer, isServiceError, listCampaigns, listOutcomes } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { formatDay, formatMoney } from '../../../../lib/discovery-copy.ts';
 import { db } from '../../../../lib/db.ts';
+import { draftingEnabled } from '../../../../lib/background.ts';
 import { requireSession } from '../../../../lib/session.ts';
+import { startCampaignAction } from '../../_campaign/actions.ts';
+import { CAMPAIGN_STATUS_LABEL } from '../../_campaign/labels.ts';
 import { OutcomeForm } from '../../_campaign/outcome-form.tsx';
 import { Score } from '../../_discovery/score.tsx';
 import { TriageButtons } from '../../_discovery/triage-buttons.tsx';
@@ -39,14 +42,24 @@ const PA_SEARCH = 'https://www.miamidadepa.gov/pa/real-estate/property-search.pa
 /** Miami-Dade folios are 13 digits, written 30-1234-567-8901 on the Property Appraiser's site. */
 const folio = (id: string) => (/^\d{13}$/.test(id) ? `${id.slice(0, 2)}-${id.slice(2, 6)}-${id.slice(6, 9)}-${id.slice(9)}` : id);
 
-export default async function BuyerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function BuyerPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ campaign_error?: string }>;
+}) {
   const { ctx, workspace } = await requireSession();
   const { id } = await params;
+  const { campaign_error: campaignError } = await searchParams;
   const b = await getBuyer(db(), ctx, workspace.workspaceId, id).catch((e: unknown) => {
     if (isServiceError(e) && e.code === 'not_found') notFound();
     throw e;
   });
-  const outcomes = await listOutcomes(db(), ctx, workspace.workspaceId, b.id);
+  const [outcomes, campaigns] = await Promise.all([
+    listOutcomes(db(), ctx, workspace.workspaceId, b.id),
+    listCampaigns(db(), ctx, workspace.workspaceId, { opportunityId: b.id }),
+  ]);
   const p = b.profile;
   const today = new Date().toISOString().slice(0, 10);
   const mailing = [p.mailing.address1, p.mailing.address2, [p.mailing.city, p.mailing.state, p.mailing.zip].filter(Boolean).join(' ')]
@@ -163,6 +176,47 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           Score {b.score} of 100 from scoring rule {b.scoringVersion}. It ranks verified buying and how well it fits your profile. It is
           not the chance that this company will buy again, and its weights have not yet been checked against real outcomes.
         </p>
+      </section>
+
+      <section aria-labelledby="campaign" className="rounded-panel border border-glass-deep p-6">
+        <h2 id="campaign" className="display text-xl font-semibold">
+          Campaign
+        </h2>
+        {campaigns.length > 0 ? (
+          <ul className="mt-3 grid gap-2">
+            {campaigns.map((c) => (
+              <li key={c.id}>
+                <Link href={`/campaigns/${c.id}`} className="flex min-h-11 items-center justify-between gap-3 font-medium text-bay-deep underline-offset-4 hover:underline">
+                  {c.title}
+                  <span className="text-sm font-normal text-ink-soft">{CAMPAIGN_STATUS_LABEL[c.status]}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : draftingEnabled() ? (
+          <>
+            <p className="mt-2 text-ink-soft">
+              GenCut will write a letter introducing you to this company and offering to share opportunities in the ZIP codes and home types it has
+              bought. The writer sees those patterns and your profile only: no addresses, prices or dates. Nothing is sent.
+            </p>
+            {b.status !== 'dismissed' && (
+              <form action={startCampaignAction} className="mt-4">
+                <input type="hidden" name="opportunityId" value={b.id} />
+                <input type="hidden" name="from" value="buyer" />
+                <button type="submit" className="h-11 rounded-full bg-bay px-6 text-sm font-medium text-paper hover:bg-bay-deep">
+                  Draft an introduction letter
+                </button>
+              </form>
+            )}
+          </>
+        ) : (
+          <p className="mt-2 text-ink-soft">Campaign drafting is not switched on for this site yet.</p>
+        )}
+        {campaignError && (
+          <p role="alert" className="mt-3 text-sm text-[#7d1a33]">
+            {campaignError}
+          </p>
+        )}
       </section>
 
       <section aria-labelledby="outcomes" className="rounded-panel border border-glass-deep p-6">

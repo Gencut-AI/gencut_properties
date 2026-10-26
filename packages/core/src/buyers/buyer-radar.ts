@@ -21,8 +21,8 @@ export const OPPORTUNITY_TYPES = ['potential_seller', 'responded_to_ad', 'sphere
 export type OpportunityType = (typeof OPPORTUNITY_TYPES)[number];
 
 /** Version of the buyer rule; recorded on every buyer opportunity and outcome. */
-export const BUYER_SCORING_VERSION = 'buyer-v1';
-/** A company needs this many qualified purchases in the window to be a buyer. */
+export const BUYER_SCORING_VERSION = 'buyer-v2';
+/** A company needs this many qualified purchases (deeds) in the window to be a buyer. */
 export const MIN_BUYER_PURCHASES = 2;
 /** A purchase below this price is treated as a nominal transfer, not a market purchase. */
 export const MIN_PURCHASE_PRICE = 10_000;
@@ -64,12 +64,46 @@ const SUFFIXES: readonly [RegExp, string][] = [
 /**
  * Group key for an owner name: upper case, "&" as AND, punctuation dropped,
  * entity suffixes spelled one way ("L.L.C." and "Limited Liability Company" →
- * LLC). Different companies are never merged, even if one investor owns both.
+ * LLC), then spaces removed, because the roll spaces the same name differently
+ * ("D R HORTON INC" / "DR HORTON INC"). Different companies are never merged,
+ * even if one investor owns both.
  */
 export function ownerKey(name: string): string {
   let n = name.toUpperCase().replace(/&/g, ' AND ').replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
   for (const [re, to] of SUFFIXES) n = n.replace(re, to);
-  return n.replace(/\s+/g, ' ').trim();
+  return n.replace(/\s+/g, '');
+}
+
+/** DOR qualification code for an arm's-length sale of several parcels on one deed; each parcel carries the full price. */
+export const MULTI_PARCEL_SALE_CODE = '05';
+
+/**
+ * One purchase: one deed. A multi-parcel sale (code 05) appears on the roll once
+ * per parcel, each with the deed's full price, so its parcels are one purchase
+ * and its price is the total for all of them, never a price per home.
+ */
+export interface Purchase {
+  readonly saleYear: number;
+  readonly saleMonth: number | null;
+  /** The deed's price: for a multi-parcel sale, the total for every parcel on it. */
+  readonly price: number;
+  readonly multiParcel: boolean;
+  readonly transactions: readonly PropertyTransaction[];
+}
+
+/** Group one company's transactions into purchases (deeds), oldest first. */
+export function purchasesOf(txs: readonly PropertyTransaction[]): Purchase[] {
+  const deeds = new Map<string, PropertyTransaction[]>();
+  for (const t of txs) {
+    const key = t.qualificationCode === MULTI_PARCEL_SALE_CODE ? `bulk:${t.saleYear}:${t.saleMonth ?? 0}:${t.price}` : `one:${t.countyCode}:${t.parcelId}:${t.saleYear}:${t.saleMonth ?? 0}`;
+    deeds.set(key, [...(deeds.get(key) ?? []), t]);
+  }
+  return [...deeds.values()]
+    .map((list) => {
+      const first = list.at(0)!;
+      return { saleYear: first.saleYear, saleMonth: first.saleMonth, price: first.price, multiParcel: first.qualificationCode === MULTI_PARCEL_SALE_CODE, transactions: list };
+    })
+    .sort((a, b) => monthIndex(a.saleYear, a.saleMonth) - monthIndex(b.saleYear, b.saleMonth) || a.transactions.at(0)!.parcelId.localeCompare(b.transactions.at(0)!.parcelId));
 }
 
 /**
@@ -117,14 +151,20 @@ export interface BuyerProfile {
   /** The name on the company's most recent purchase. */
   readonly name: string;
   readonly countyCode: string;
+  /** Purchases, counted as deeds: a multi-parcel sale is one purchase. */
   readonly purchases: number;
+  /** Parcels across all purchases. */
+  readonly parcels: number;
+  /** Purchases that were multi-parcel sales. */
+  readonly multiParcelPurchases: number;
   readonly first: { readonly year: number; readonly month: number | null };
   readonly latest: { readonly year: number; readonly month: number | null };
-  /** ZIP codes bought in, most purchases first. */
+  /** ZIP codes bought in, by purchases that include a parcel there, most first. */
   readonly zips: readonly { readonly zip: string; readonly count: number }[];
-  /** Home types bought, most purchases first. */
+  /** Home types bought, by purchases that include one, most first. */
   readonly homeTypes: readonly { readonly useCode: string; readonly label: string; readonly count: number }[];
-  readonly price: { readonly min: number; readonly median: number; readonly max: number };
+  /** Prices of single-parcel purchases; null when every purchase was a multi-parcel sale (no price per home). */
+  readonly price: { readonly min: number; readonly median: number; readonly max: number } | null;
   /** The tax-mailing address on the most recent purchase. */
   readonly mailing: PropertyTransaction['ownerMailing'];
 }
@@ -135,26 +175,31 @@ function counts<K extends string>(items: readonly K[]): { key: K; count: number 
   return [...m].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
-/** The profile of one company from its purchases (all with the same owner key). */
+/** The profile of one company from its transactions (all with the same owner key). */
 export function buyerProfile(txs: readonly PropertyTransaction[]): BuyerProfile {
   if (txs.length === 0) throw new Error('A buyer profile needs at least one purchase.');
-  const byDate = [...txs].sort((a, b) => monthIndex(a.saleYear, a.saleMonth) - monthIndex(b.saleYear, b.saleMonth) || a.parcelId.localeCompare(b.parcelId));
-  const first = byDate.at(0)!;
-  const latest = byDate.at(-1)!;
-  const prices = txs.map((t) => t.price).sort((a, b) => a - b);
-  const mid = Math.floor(prices.length / 2);
-  const median = prices.length % 2 ? prices.at(mid)! : Math.round((prices.at(mid - 1)! + prices.at(mid)!) / 2);
+  const deeds = purchasesOf(txs);
+  const first = deeds.at(0)!;
+  const latest = deeds.at(-1)!;
+  const newest = latest.transactions.at(0)!;
+  const single = deeds.filter((d) => !d.multiParcel).map((d) => d.price).sort((a, b) => a - b);
+  const mid = Math.floor(single.length / 2);
+  const median = single.length % 2 ? single.at(mid)! : Math.round((single.at(mid - 1)! + single.at(mid)!) / 2);
+  // A deed counts once per ZIP or home type it includes.
+  const perDeed = <K extends string>(of: (t: PropertyTransaction) => K) => counts(deeds.flatMap((d) => [...new Set(d.transactions.map(of))]));
   return {
-    ownerKey: latest.ownerKey,
-    name: latest.ownerName,
-    countyCode: latest.countyCode,
-    purchases: txs.length,
+    ownerKey: newest.ownerKey,
+    name: newest.ownerName,
+    countyCode: newest.countyCode,
+    purchases: deeds.length,
+    parcels: txs.length,
+    multiParcelPurchases: deeds.filter((d) => d.multiParcel).length,
     first: { year: first.saleYear, month: first.saleMonth },
     latest: { year: latest.saleYear, month: latest.saleMonth },
-    zips: counts(txs.map((t) => t.situs.zip)).map((c) => ({ zip: c.key, count: c.count })),
-    homeTypes: counts(txs.map((t) => t.useCode)).map((c) => ({ useCode: c.key, label: DOR_USE_LABELS[c.key] ?? 'Residential', count: c.count })),
-    price: { min: prices.at(0)!, median, max: prices.at(-1)! },
-    mailing: latest.ownerMailing,
+    zips: perDeed((t) => t.situs.zip).map((c) => ({ zip: c.key, count: c.count })),
+    homeTypes: perDeed((t) => t.useCode).map((c) => ({ useCode: c.key, label: DOR_USE_LABELS[c.key] ?? 'Residential', count: c.count })),
+    price: single.length ? { min: single.at(0)!, median, max: single.at(-1)! } : null,
+    mailing: newest.ownerMailing,
   };
 }
 
@@ -182,23 +227,25 @@ export function scoreBuyer(p: BuyerProfile, focus: AgentFocus, rollDate: string)
   const reasons: BuyerReason[] = [];
   const window = `${monthLabel(p.first.year, p.first.month)} to ${monthLabel(p.latest.year, p.latest.month)}`;
   const buys = p.purchases >= 5 ? 50 : p.purchases >= 3 ? 40 : 30;
-  reasons.push({ code: 'purchases', points: buys, text: `${p.purchases} qualified purchases on the county roll, ${window}.` });
+  const parcels = p.parcels > p.purchases ? ` (${p.parcels} parcels, ${p.multiParcelPurchases} of them multi-parcel sales)` : '';
+  reasons.push({ code: 'purchases', points: buys, text: `${p.purchases} qualified purchases on the county roll${parcels}, ${window}.` });
 
   const roll = monthIndex(Number(rollDate.slice(0, 4)), Number(rollDate.slice(5, 7)));
   const age = roll - monthIndex(p.latest.year, p.latest.month);
   if (age <= 6) reasons.push({ code: 'recent', points: 20, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 6 months of the roll.` });
   else if (age <= 12) reasons.push({ code: 'recent', points: 10, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 12 months of the roll.` });
 
-  const inFocus = p.zips.filter((z) => focus.zips.includes(z.zip)).reduce((a, z) => a + z.count, 0);
+  const inFocus = Math.min(p.purchases, p.zips.filter((z) => focus.zips.includes(z.zip)).reduce((a, z) => a + z.count, 0));
   if (inFocus > 0) {
     reasons.push({ code: 'focus_zip', points: 15, text: `${inFocus} of ${p.purchases} purchases in your ZIP codes.` });
     if (inFocus * 2 >= p.purchases) reasons.push({ code: 'mostly_focus_zip', points: 10, text: 'Half or more of its purchases are in your ZIP codes.' });
   }
   const typeFit = p.homeTypes.filter((t) => matchesPropertyFocus(propertyUseOf(t.useCode), focus.propertyUses));
   if (typeFit.length) reasons.push({ code: 'focus_type', points: 10, text: `Bought ${typeFit.map((t) => t.label.toLowerCase()).join(' and ')} homes, which you work.` });
-  const inRange = (focus.minValue === undefined || p.price.median >= focus.minValue) && (focus.maxValue === undefined || p.price.median <= focus.maxValue);
+  const median = p.price?.median;
+  const inRange = median !== undefined && (focus.minValue === undefined || median >= focus.minValue) && (focus.maxValue === undefined || median <= focus.maxValue);
   if ((focus.minValue !== undefined || focus.maxValue !== undefined) && inRange) {
-    reasons.push({ code: 'focus_price', points: 5, text: `Median purchase price ${usd(p.price.median)}, inside your price range.` });
+    reasons.push({ code: 'focus_price', points: 5, text: `Median single-home purchase price ${usd(median)}, inside your price range.` });
   }
   return { eligible: true, score: Math.min(100, reasons.reduce((a, r) => a + r.points, 0)), reasons, version: BUYER_SCORING_VERSION };
 }

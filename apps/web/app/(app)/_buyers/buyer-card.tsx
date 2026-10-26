@@ -19,14 +19,17 @@ export function BuyerCard({ b }: { b: BuyerSummary }) {
             <h3 className="display truncate text-lg font-semibold">{p.name}</h3>
           </Link>
           <p className="mt-0.5 text-sm">
-            <span className="font-medium">{p.purchases} verified purchases</span>
+            <span className="font-medium">
+              {p.purchases} verified purchases{p.parcels && p.parcels > p.purchases ? ` (${p.parcels} parcels)` : ''}
+            </span>
             <span className="text-ink-soft">
               {' '}
               · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
             </span>
           </p>
           <p className="mt-1 text-sm text-ink-soft">
-            {zips} · {types} · {formatMoneyShort(p.price.min)}–{formatMoneyShort(p.price.max)}
+            {zips} · {types}
+            {p.price ? ` · ${formatMoneyShort(p.price.min)}–${formatMoneyShort(p.price.max)}` : ''}
           </p>
         </div>
       </div>

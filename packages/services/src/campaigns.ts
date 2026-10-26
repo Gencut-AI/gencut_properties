@@ -11,16 +11,19 @@
  */
 import {
   type AgentForDraft,
-  CAMPAIGN_PROMPT_VERSION,
+  BUYER_DRAFT,
+  type BuyerProfile,
   type CampaignDraft,
   type CampaignFact,
   type CampaignState,
+  type DraftKind,
   type DraftProblem,
+  SELLER_DRAFT,
   type StoredParcel,
+  buyerFacts,
   campaignFacts,
-  campaignPrompt,
-  checkCampaignDraft,
   checkCampaignTransition,
+  draftKind,
   extractJson,
   parseCampaignDraft,
 } from '@gencut/core';
@@ -67,9 +70,10 @@ async function hasPermission(db: Db, workspaceId: string, kind: 'generate' | 'di
 }
 
 /**
- * Start a draft for an opportunity. Requires the workspace's `generate`
- * permission. Returns the campaign id; if a draft is already being written for
- * this opportunity, returns that one.
+ * Start a draft for an opportunity: a letter to a property's owner for a
+ * potential seller, or an introduction to a company for an investor buyer.
+ * Requires the workspace's `generate` permission. Returns the campaign id; if a
+ * draft is already being written for this opportunity, returns that one.
  */
 export async function startCampaignDraft(
   sql: Sql,
@@ -83,11 +87,12 @@ export async function startCampaignDraft(
       throw new ServiceError('forbidden', 'Preparing campaigns is turned off for this workspace.');
     }
     if (!z.uuid().safeParse(opportunityId).success) throw new ServiceError('not_found', 'That opportunity does not exist.');
-    const [opp] = await tx<{ id: string; status: string; payload: StoredParcel }[]>`
-      SELECT o.id, o.status, r.payload FROM opportunities o JOIN source_records r ON r.id = o.source_record_id
+    const [opp] = await tx<{ id: string; status: string; type: string; payload: StoredParcel | null; evidence: { profile: BuyerProfile } | null }[]>`
+      SELECT o.id, o.status, o.type, r.payload, o.evidence FROM opportunities o LEFT JOIN source_records r ON r.id = o.source_record_id
       WHERE o.workspace_id = ${workspaceId} AND o.id = ${opportunityId} FOR UPDATE OF o
     `;
     if (!opp) throw new ServiceError('not_found', 'That opportunity does not exist.');
+    if (opp.type !== 'potential_seller' && opp.type !== 'investor_buyer') throw new ServiceError('invalid', 'Campaigns are not available for this kind of opportunity yet.');
     if (opp.status === 'dismissed') throw new ServiceError('invalid', 'Restore this opportunity before starting a campaign.');
     const [existing] = await tx<{ id: string }[]>`
       SELECT id FROM campaigns WHERE opportunity_id = ${opportunityId} AND status = 'generating'
@@ -96,13 +101,28 @@ export async function startCampaignDraft(
 
     const [profile] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
     if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
-    const facts = campaignFacts(opp.payload, agentFrom(profile));
-    const address = opp.payload.situs.address || `parcel ${opp.payload.parcelId}`;
+    let plan: { kind: DraftKind; facts: CampaignFact[]; title: string; objective: string };
+    if (opp.type === 'investor_buyer') {
+      if (!opp.evidence?.profile) throw new Error(`buyer opportunity ${opp.id} has no profile`);
+      plan = {
+        kind: BUYER_DRAFT,
+        facts: buyerFacts(opp.evidence.profile, agentFrom(profile)),
+        title: `Introduction to ${opp.evidence.profile.name}`,
+        objective: 'Introduce the agent to the company by direct mail and offer to share opportunities that fit its focus.',
+      };
+    } else {
+      if (!opp.payload) throw new Error(`seller opportunity ${opp.id} has no source record`);
+      plan = {
+        kind: SELLER_DRAFT,
+        facts: campaignFacts(opp.payload, agentFrom(profile)),
+        title: `Introduction to the owner of ${opp.payload.situs.address || `parcel ${opp.payload.parcelId}`}`,
+        objective: 'Introduce the agent to the owner by direct mail and invite a conversation.',
+      };
+    }
     const [c] = await tx<{ id: string }[]>`
       INSERT INTO campaigns (workspace_id, opportunity_id, title, objective, status, facts, prompt_version, created_by)
-      VALUES (${workspaceId}, ${opportunityId}, ${`Introduction to the owner of ${address}`},
-              'Introduce the agent to the owner by direct mail and invite a conversation.',
-              'generating', ${tx.json(facts as never)}, ${CAMPAIGN_PROMPT_VERSION}, ${ctx.userId})
+      VALUES (${workspaceId}, ${opportunityId}, ${plan.title}, ${plan.objective},
+              'generating', ${tx.json(plan.facts as never)}, ${plan.kind.version}, ${ctx.userId})
       RETURNING id
     `;
     if (!c) throw new Error('campaign insert returned no row');
@@ -125,26 +145,28 @@ export type GenerateOutcome = 'review' | 'generation_failed' | 'skipped';
  */
 export async function generateCampaignDraft(sql: Sql, campaignId: string, router: ModelRouter): Promise<GenerateOutcome> {
   if (!z.uuid().safeParse(campaignId).success) return 'skipped';
-  const [claimed] = await sql<{ id: string; workspace_id: string; facts: CampaignFact[]; opportunity_id: string }[]>`
+  const [claimed] = await sql<{ id: string; workspace_id: string; facts: CampaignFact[]; opportunity_id: string; prompt_version: string | null }[]>`
     UPDATE campaigns SET generation_started_at = now(), generation_attempts = generation_attempts + 1, updated_at = now()
     WHERE id = ${campaignId} AND status = 'generating'
       AND (generation_started_at IS NULL OR generation_started_at < now() - ${STALE_GENERATION}::interval)
-    RETURNING id, workspace_id, facts, opportunity_id
+    RETURNING id, workspace_id, facts, opportunity_id, prompt_version
   `;
   if (!claimed) return 'skipped';
   const ws = claimed.workspace_id;
+  const kind = draftKind(claimed.prompt_version);
   const [profile] = await sql<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${ws}`;
   const facts = claimed.facts;
   const route = router.route(DRAFT_ROLE);
-  const run = { workspaceId: ws, campaignId, purpose: 'campaign_draft', role: DRAFT_ROLE, promptVersion: CAMPAIGN_PROMPT_VERSION, factKeys: facts.map((f) => f.key) };
+  const run = { workspaceId: ws, campaignId, purpose: 'campaign_draft', role: DRAFT_ROLE, promptVersion: kind?.version ?? String(claimed.prompt_version), factKeys: facts.map((f) => f.key) };
 
   let problems: string[] = [];
   let lastProblems: DraftProblem[] = [];
   try {
     if (!profile) throw new Error('The workspace has no business profile.');
+    if (!kind) throw new Error(`This campaign was written with "${claimed.prompt_version}", which GenCut no longer supports. Start a new campaign.`);
     const agent = agentFrom(profile);
     for (let attempt = 1; attempt <= MAX_DRAFT_ATTEMPTS; attempt++) {
-      const prompt = campaignPrompt(facts, problems);
+      const prompt = kind.prompt(facts, problems);
       let response;
       try {
         response = await router.complete({ role: DRAFT_ROLE, system: prompt.system, user: prompt.user, maxOutputTokens: 3000 });
@@ -163,9 +185,9 @@ export async function generateCampaignDraft(sql: Sql, campaignId: string, router
         lastProblems = [{ code: 'unknown_fact', message: `The reply was not valid JSON (${e instanceof Error ? e.message : 'parse error'}).` }];
       }
       if (draft) {
-        lastProblems = checkCampaignDraft(draft, facts, agent);
+        lastProblems = kind.check(draft, facts, agent);
         if (lastProblems.length === 0) {
-          await finishReview(sql, campaignId, ws, claimed.opportunity_id, draft);
+          await finishReview(sql, campaignId, ws, claimed.opportunity_id, draft, kind.version);
           return 'review';
         }
       }
@@ -188,7 +210,7 @@ async function transition(tx: Db, campaignId: string, to: CampaignState): Promis
   return row.status;
 }
 
-async function finishReview(sql: Sql, campaignId: string, ws: string, opportunityId: string, draft: CampaignDraft): Promise<void> {
+async function finishReview(sql: Sql, campaignId: string, ws: string, opportunityId: string, draft: CampaignDraft, promptVersion: string): Promise<void> {
   await sql.begin(async (tx) => {
     const from = await transition(tx, campaignId, 'review');
     await tx`
@@ -202,7 +224,7 @@ async function finishReview(sql: Sql, campaignId: string, ws: string, opportunit
     `;
     await recordAudit(tx, {
       workspaceId: ws, actorType: 'agent', actorId: null, via: 'worker', entityType: 'campaign', entityId: campaignId,
-      action: 'state_change', fromState: from, toState: 'review', detail: { promptVersion: CAMPAIGN_PROMPT_VERSION },
+      action: 'state_change', fromState: from, toState: 'review', detail: { promptVersion },
     });
   });
 }
@@ -285,6 +307,8 @@ export interface CampaignView {
   readonly problems: readonly DraftProblem[];
   readonly error: string | null;
   readonly promptVersion: string | null;
+  /** Who the letter is to: a property's owner (seller campaigns) or a company (buyer campaigns). */
+  readonly audience: 'owner' | 'company';
   readonly attempts: number;
   readonly letterState: string | null;
   readonly usage: CampaignUsage;
@@ -316,6 +340,7 @@ export async function getCampaign(db: Db, ctx: RequestContext, workspaceId: stri
     problems: row.problems ?? [],
     error: row.error,
     promptVersion: row.prompt_version,
+    audience: draftKind(row.prompt_version)?.audience ?? 'owner',
     attempts: row.generation_attempts,
     letterState: action?.state ?? null,
     usage: {
@@ -382,8 +407,10 @@ export async function updateCampaignLetter(
     if (row.status !== 'review' || !row.draft) throw new ServiceError('invalid', 'Only a draft in review can be edited.');
     const [profile] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
     if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
+    const kind = draftKind(row.prompt_version);
+    if (!kind) throw new ServiceError('invalid', 'This campaign was written with rules GenCut no longer supports. Start a new campaign.');
     const draft: CampaignDraft = { ...row.draft, letter: parsed.data };
-    const problems = checkCampaignDraft(draft, row.facts ?? [], agentFrom(profile));
+    const problems = kind.check(draft, row.facts ?? [], agentFrom(profile));
     if (problems.length) {
       throw new ServiceError('invalid', 'The letter needs changes before it can be saved.', { letter: problems.map((p) => p.message).join(' ') });
     }

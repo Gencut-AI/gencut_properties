@@ -29,7 +29,7 @@ const base = {
 
 const tx = (n: number, over: Partial<PropertyTransaction> = {}): PropertyTransaction => ({
   countyCode: '23', parcelId: `P${n}`, rollYear: 2026, situs: { address: `${n} EXAMPLE DR`, city: 'AVENTURA', zip: '33180' },
-  useCode: '001', units: 1, livingArea: 1800, yearBuilt: 1990, ownerName: 'SAMPLE HOMES LLC', ownerKey: 'SAMPLE HOMES LLC',
+  useCode: '001', units: 1, livingArea: 1800, yearBuilt: 1990, ownerName: 'SAMPLE HOMES LLC', ownerKey: 'SAMPLEHOMESLLC',
   ownerMailing: { address1: '1 SAMPLE PLAZA', address2: '', city: 'MIAMI', state: 'FL', zip: '33131' },
   saleYear: 2025, saleMonth: n, price: 500_000 + n * 10_000, qualificationCode: '01', ...over,
 });
@@ -39,7 +39,7 @@ describe('Buyer Radar: verified purchases from the roll', () => {
   it('keeps a qualified 2025–2026 purchase whose owner of record is a company', () => {
     const t = nalRowToTransaction(row(base), idx);
     assert.ok(t);
-    assert.equal(t.ownerKey, 'SAMPLE HOMES LLC');
+    assert.equal(t.ownerKey, 'SAMPLEHOMESLLC');
     assert.deepEqual([t.saleYear, t.saleMonth, t.price, t.qualificationCode], [2025, 3, 650_000, '01']);
     assert.equal(t.situs.zip, '33180');
   });
@@ -61,9 +61,10 @@ describe('Buyer Radar: verified purchases from the roll', () => {
   });
 
   it('groups spellings of the same company name, never different companies', () => {
-    assert.equal(ownerKey('Sample Homes, L.L.C.'), 'SAMPLE HOMES LLC');
-    assert.equal(ownerKey('SAMPLE HOMES LIMITED LIABILITY COMPANY'), 'SAMPLE HOMES LLC');
-    assert.equal(ownerKey('A & B PROPERTIES INCORPORATED'), 'A AND B PROPERTIES INC');
+    assert.equal(ownerKey('Sample Homes, L.L.C.'), 'SAMPLEHOMESLLC');
+    assert.equal(ownerKey('SAMPLE HOMES LIMITED LIABILITY COMPANY'), 'SAMPLEHOMESLLC');
+    assert.equal(ownerKey('A & B PROPERTIES INCORPORATED'), 'AANDBPROPERTIESINC');
+    assert.equal(ownerKey('D R SAMPLE INC'), ownerKey('DR SAMPLE INC'), 'the roll spaces initials either way');
     assert.notEqual(ownerKey('SAMPLE HOMES LLC'), ownerKey('SAMPLE HOMES II LLC'));
   });
 });
@@ -77,7 +78,22 @@ describe('Buyer Radar: profiles and score', () => {
     assert.deepEqual(p.zips, [{ zip: '33180', count: 2 }, { zip: '33160', count: 1 }]);
     assert.deepEqual(p.homeTypes.map((t) => [t.label, t.count]), [['Single family', 2], ['Condominium', 1]]);
     assert.deepEqual(p.price, { min: 510_000, median: 530_000, max: 570_000 });
-    assert.equal(buyerProfile([tx(2), tx(4)]).price.median, 530_000, 'median of an even count');
+    assert.equal(buyerProfile([tx(2), tx(4)]).price?.median, 530_000, 'median of an even count');
+  });
+
+  it('counts a multi-parcel sale as one purchase, with its price as the total and never a price per home', () => {
+    // One deed of three lots (code 05: the full price on each parcel), plus one single-parcel purchase.
+    const lots = [1, 2, 3].map((n) => tx(n + 10, { parcelId: `L${n}`, saleMonth: 6, price: 3_000_000, qualificationCode: '05', useCode: '000' }));
+    const p = buyerProfile([...lots, tx(2)]);
+    assert.deepEqual([p.purchases, p.parcels, p.multiParcelPurchases], [2, 4, 1]);
+    assert.deepEqual(p.price, { min: 520_000, median: 520_000, max: 520_000 }, 'prices of single-parcel purchases only');
+    assert.deepEqual(p.zips, [{ zip: '33180', count: 2 }], 'ZIP counts are per purchase');
+    assert.equal(buyerProfile(lots).purchases, 1);
+    assert.equal(buyerProfile(lots).price, null);
+    assert.equal(scoreBuyer(buyerProfile(lots), focus, '2026-07-27').eligible, false, 'one bulk deed is one purchase, not a repeat buyer');
+    const s = scoreBuyer(p, focus, '2026-07-27');
+    assert.ok(s.eligible);
+    assert.match(s.reasons[0]?.text ?? '', /^2 qualified purchases on the county roll \(4 parcels, 1 of them multi-parcel sales\)/);
   });
 
   it('needs two purchases, and ranks volume, recency and fit with the agent, each with a reason', () => {

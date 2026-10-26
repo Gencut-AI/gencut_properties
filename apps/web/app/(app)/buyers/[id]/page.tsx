@@ -1,12 +1,15 @@
-import { monthLabel } from '@gencut/core';
-import { getBuyer, isServiceError, listOutcomes } from '@gencut/services';
+import { MULTI_PARCEL_SALE_CODE, monthLabel } from '@gencut/core';
+import { getBuyer, isServiceError, listCampaigns, listOutcomes } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { formatDay, formatMoney } from '../../../../lib/discovery-copy.ts';
 import { db } from '../../../../lib/db.ts';
+import { draftingEnabled } from '../../../../lib/background.ts';
 import { requireSession } from '../../../../lib/session.ts';
+import { startCampaignAction } from '../../_campaign/actions.ts';
+import { CAMPAIGN_STATUS_LABEL } from '../../_campaign/labels.ts';
 import { OutcomeForm } from '../../_campaign/outcome-form.tsx';
 import { Score } from '../../_discovery/score.tsx';
 import { TriageButtons } from '../../_discovery/triage-buttons.tsx';
@@ -39,19 +42,39 @@ const PA_SEARCH = 'https://www.miamidadepa.gov/pa/real-estate/property-search.pa
 /** Miami-Dade folios are 13 digits, written 30-1234-567-8901 on the Property Appraiser's site. */
 const folio = (id: string) => (/^\d{13}$/.test(id) ? `${id.slice(0, 2)}-${id.slice(2, 6)}-${id.slice(6, 9)}-${id.slice(9)}` : id);
 
-export default async function BuyerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function BuyerPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ campaign_error?: string }>;
+}) {
   const { ctx, workspace } = await requireSession();
   const { id } = await params;
+  const { campaign_error: campaignError } = await searchParams;
   const b = await getBuyer(db(), ctx, workspace.workspaceId, id).catch((e: unknown) => {
     if (isServiceError(e) && e.code === 'not_found') notFound();
     throw e;
   });
-  const outcomes = await listOutcomes(db(), ctx, workspace.workspaceId, b.id);
+  const [outcomes, campaigns] = await Promise.all([
+    listOutcomes(db(), ctx, workspace.workspaceId, b.id),
+    listCampaigns(db(), ctx, workspace.workspaceId, { opportunityId: b.id }),
+  ]);
   const p = b.profile;
   const today = new Date().toISOString().slice(0, 10);
   const mailing = [p.mailing.address1, p.mailing.address2, [p.mailing.city, p.mailing.state, p.mailing.zip].filter(Boolean).join(' ')]
     .filter(Boolean)
     .join(', ');
+  // A multi-parcel sale (code 05) is one deed listed once per parcel, each with the deed's full price.
+  type Row = (typeof b.purchases)[number];
+  const deeds: Row[][] = [];
+  for (const x of b.purchases) {
+    const same = x.qualificationCode === MULTI_PARCEL_SALE_CODE
+      ? deeds.find((d) => d[0]?.qualificationCode === MULTI_PARCEL_SALE_CODE && d[0].saleYear === x.saleYear && d[0].saleMonth === x.saleMonth && d[0].price === x.price)
+      : undefined;
+    if (same) same.push(x);
+    else deeds.push([x]);
+  }
   const sources = [...new Set(b.purchases.map((x) => `${x.sourceFile}, file dated ${formatDay(x.fileDate)}`))];
   const spellings = [...new Set(b.purchases.map((x) => x.ownerNameOnRoll))];
 
@@ -67,7 +90,7 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           <p className="text-sm font-medium text-ink-soft">Investor buyer · {STATUS_LABEL[b.status]}</p>
           <h1 className="display mt-1 break-words text-3xl font-bold sm:text-4xl">{p.name}</h1>
           <p className="mt-1 text-ink-soft">
-            {p.purchases} verified purchases · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
+            {p.purchases} verified purchases{p.parcels && p.parcels > p.purchases ? ` (${p.parcels} parcels)` : ''} · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
           </p>
           <p className="mt-1 text-sm text-ink-soft">
             Newest evidence: {monthLabel(p.latest.year, p.latest.month)}, from the roll of {formatDay(b.rollFileDate)}
@@ -95,27 +118,58 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           </p>
         )}
         <ul className="mt-4 grid gap-3">
-          {b.purchases.map((x) => (
-            <li key={x.id} className="rounded-xl border border-glass-deep p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <p className="font-medium">
-                  {x.address || `Parcel ${x.parcelId}`}
-                  <span className="font-normal text-ink-soft"> · {[x.city, x.zip].filter(Boolean).join(' ')}</span>
+          {deeds.map((deed) => {
+            const x = deed[0]!;
+            if (deed.length === 1 && x.qualificationCode !== MULTI_PARCEL_SALE_CODE) {
+              return (
+                <li key={x.id} className="rounded-xl border border-glass-deep p-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <p className="font-medium">
+                      {x.address || `Parcel ${x.parcelId}`}
+                      <span className="font-normal text-ink-soft"> · {[x.city, x.zip].filter(Boolean).join(' ')}</span>
+                    </p>
+                    <p className="font-semibold tabular-nums">{formatMoney(x.price)}</p>
+                  </div>
+                  <p className="mt-1 text-sm text-ink-soft">
+                    {monthLabel(x.saleYear, x.saleMonth)} · {x.homeType}
+                    {x.units && x.units > 1 ? ` · ${x.units} units` : ''}
+                    {x.livingArea ? ` · ${x.livingArea.toLocaleString('en-US')} sq ft` : ''}
+                    {x.yearBuilt ? ` · built ${x.yearBuilt}` : ''}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    Folio {folio(x.parcelId)} · qualification code {x.qualificationCode}
+                    {spellings.length > 1 ? ` · on the roll as “${x.ownerNameOnRoll}”` : ''}
+                  </p>
+                </li>
+              );
+            }
+            return (
+              <li key={x.id} className="rounded-xl border border-glass-deep p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-medium">
+                    Multi-parcel sale · {deed.length} {deed.length === 1 ? 'parcel' : 'parcels'} on one deed
+                  </p>
+                  <p className="font-semibold tabular-nums">{formatMoney(x.price)} total</p>
+                </div>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {monthLabel(x.saleYear, x.saleMonth)} · qualification code {x.qualificationCode}: the roll shows the deed&rsquo;s full price on each
+                  parcel, so it is not a price per home.
+                  {deed.length === 1 ? ' Its other parcels are not residential or not in the stored roll.' : ''}
                 </p>
-                <p className="font-semibold tabular-nums">{formatMoney(x.price)}</p>
-              </div>
-              <p className="mt-1 text-sm text-ink-soft">
-                {monthLabel(x.saleYear, x.saleMonth)} · {x.homeType}
-                {x.units && x.units > 1 ? ` · ${x.units} units` : ''}
-                {x.livingArea ? ` · ${x.livingArea.toLocaleString('en-US')} sq ft` : ''}
-                {x.yearBuilt ? ` · built ${x.yearBuilt}` : ''}
-              </p>
-              <p className="mt-1 text-xs text-ink-soft">
-                Folio {folio(x.parcelId)} · qualification code {x.qualificationCode}
-                {spellings.length > 1 ? ` · on the roll as “${x.ownerNameOnRoll}”` : ''}
-              </p>
-            </li>
-          ))}
+                <ul className="mt-2 grid gap-1 text-sm">
+                  {deed.map((y) => (
+                    <li key={y.id}>
+                      {y.address || `Parcel ${y.parcelId}`}
+                      <span className="text-ink-soft">
+                        {' '}
+                        · {y.zip} · {y.homeType} · folio {folio(y.parcelId)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
@@ -127,9 +181,14 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
         <dl className="mt-3">
           <Fact label="ZIP codes bought in">{p.zips.map((z) => `${z.zip} (${z.count})`).join(', ')}</Fact>
           <Fact label="Home types">{p.homeTypes.map((t) => `${t.label} (${t.count})`).join(', ')}</Fact>
-          <Fact label="Price paid">
-            {formatMoney(p.price.min)} to {formatMoney(p.price.max)}, median {formatMoney(p.price.median)}
+          <Fact label="Price paid, single-home purchases">
+            {p.price ? `${formatMoney(p.price.min)} to ${formatMoney(p.price.max)}, median ${formatMoney(p.price.median)}` : 'None: every purchase was a multi-parcel sale'}
           </Fact>
+          {(p.multiParcelPurchases ?? 0) > 0 && (
+            <Fact label="Multi-parcel sales">
+              {p.multiParcelPurchases} of {p.purchases} purchases bought several parcels on one deed; their prices are totals, not prices per home
+            </Fact>
+          )}
           <Fact label="Tax mailing address">{mailing || '—'}</Fact>
           {spellings.length > 1 && <Fact label="Names on the roll">{spellings.join('; ')}</Fact>}
         </dl>
@@ -163,6 +222,47 @@ export default async function BuyerPage({ params }: { params: Promise<{ id: stri
           Score {b.score} of 100 from scoring rule {b.scoringVersion}. It ranks verified buying and how well it fits your profile. It is
           not the chance that this company will buy again, and its weights have not yet been checked against real outcomes.
         </p>
+      </section>
+
+      <section aria-labelledby="campaign" className="rounded-panel border border-glass-deep p-6">
+        <h2 id="campaign" className="display text-xl font-semibold">
+          Campaign
+        </h2>
+        {campaigns.length > 0 ? (
+          <ul className="mt-3 grid gap-2">
+            {campaigns.map((c) => (
+              <li key={c.id}>
+                <Link href={`/campaigns/${c.id}`} className="flex min-h-11 items-center justify-between gap-3 font-medium text-bay-deep underline-offset-4 hover:underline">
+                  {c.title}
+                  <span className="text-sm font-normal text-ink-soft">{CAMPAIGN_STATUS_LABEL[c.status]}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : draftingEnabled() ? (
+          <>
+            <p className="mt-2 text-ink-soft">
+              GenCut will write a letter introducing you to this company and offering to share opportunities in the ZIP codes and home types it has
+              bought. The writer sees those patterns and your profile only: no addresses, prices or dates. Nothing is sent.
+            </p>
+            {b.status !== 'dismissed' && (
+              <form action={startCampaignAction} className="mt-4">
+                <input type="hidden" name="opportunityId" value={b.id} />
+                <input type="hidden" name="from" value="buyer" />
+                <button type="submit" className="h-11 rounded-full bg-bay px-6 text-sm font-medium text-paper hover:bg-bay-deep">
+                  Draft an introduction letter
+                </button>
+              </form>
+            )}
+          </>
+        ) : (
+          <p className="mt-2 text-ink-soft">Campaign drafting is not switched on for this site yet.</p>
+        )}
+        {campaignError && (
+          <p role="alert" className="mt-3 text-sm text-[#7d1a33]">
+            {campaignError}
+          </p>
+        )}
       </section>
 
       <section aria-labelledby="outcomes" className="rounded-panel border border-glass-deep p-6">

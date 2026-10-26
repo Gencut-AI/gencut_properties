@@ -50,6 +50,20 @@ fair-housing checks, and three more:
 
 Nothing is posted; publishing will be a separate, approved channel.
 
+Buyer letters (`packages/core/src/buyers/buyer-letter.ts`, `buyer-intro-v1`) pass every check
+above, and three more:
+
+- **No claimed intent:** nothing says or implies the company is buying now ("actively buying",
+  "in the market for", "expanding your portfolio"…). Past purchases are not current intent.
+- **No claimed availability:** no "off-market", "pocket listing" or "I have a property". The
+  offer is to share opportunities as they come up.
+- **Nothing it bought, nor how it was found:** no purchases, addresses, counts, prices, dates,
+  deeds or records in the letter. The writer is given only the company name, the ZIP codes and
+  home types it bought in, and the agent's profile.
+
+Words inside the company's own name (for example "white", "acquisitions", a street number)
+are not flagged. Social posts are not made for buyer campaigns.
+
 ## Data sources
 
 | Source | Basis | What GenCut keeps | What it authorizes |

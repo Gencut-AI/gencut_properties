@@ -21,15 +21,17 @@ const MEDIA_JOB = 'generate-media-background';
 export async function startCampaignAction(form: FormData): Promise<void> {
   const { ctx, workspace } = await requireSession();
   const opportunityId = String(form.get('opportunityId') ?? '');
+  // The page the request came from: a seller opportunity or a buyer.
+  const page = form.get('from') === 'buyer' ? `/buyers/${opportunityId}` : `/opportunities/${opportunityId}`;
   let campaignId: string;
   try {
     ({ campaignId } = await startCampaignDraft(db(), ctx, workspace.workspaceId, opportunityId));
   } catch (e) {
-    if (isServiceError(e)) redirect(`/opportunities/${opportunityId}?campaign_error=${encodeURIComponent(e.message)}`);
+    if (isServiceError(e)) redirect(`${page}?campaign_error=${encodeURIComponent(e.message)}`);
     throw e;
   }
   await startBackgroundJob(JOB, { campaignId });
-  revalidatePath(`/opportunities/${opportunityId}`);
+  revalidatePath(page);
   redirect(`/campaigns/${campaignId}`);
 }
 

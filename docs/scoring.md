@@ -58,10 +58,11 @@ A new rule gets a new version string. Its tests must keep every case above, incl
 revaluation case from the cross-check. Re-scoring happens automatically for workspaces whose
 records or profile change; the score shown always names its version.
 
-## Buyer ranking (`buyer-v1`)
+## Buyer ranking (`buyer-v2`)
 
-Ranks companies with two or more qualified purchases on the roll (see D-014). Every input is
-counted from cited purchases.
+Ranks companies with two or more qualified purchases on the roll (see D-014). A purchase is a
+deed: a multi-parcel sale (DOR code 05) counts once, and its price, a total for all its parcels,
+is left out of price ranges (D-016). Every input is counted from cited purchases.
 
 | Reason | Points |
 | --- | --- |
@@ -70,7 +71,7 @@ counted from cited purchases.
 | Any purchase in the agent's focus ZIPs | +15 |
 | Half or more of purchases in focus ZIPs | +10 |
 | Bought the agent's home types | +10 |
-| Median price inside the agent's range | +5 |
+| Median single-parcel purchase price inside the agent's range | +5 |
 
 Capped at 100. It ranks verified buying and fit; it is not the chance that the company buys
 again, and is reported separately from seller scores (`outcomeReport(…, 'investor_buyer')`).

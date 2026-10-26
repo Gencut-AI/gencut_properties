@@ -188,7 +188,9 @@ export interface DraftProblem {
     | 'prohibited_term'
     | 'too_long'
     | 'reveals_subject'
-    | 'bad_hashtag';
+    | 'bad_hashtag'
+    | 'claims_intent'
+    | 'claims_availability';
   readonly message: string;
 }
 

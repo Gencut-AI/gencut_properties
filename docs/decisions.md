@@ -157,3 +157,16 @@ can give exact purchase dates.
 **Why:** a qualified sale to a company is a verified fact on a public record; anything about what the company wants next is inference and is labelled as such. Companies only, because building purchase histories of private individuals isn't needed for the investor use case and raises privacy risk. Reusing the roll avoids a new source, licence or secret. One pass keeps the worker within its GitHub Actions budget.
 
 **Revisit if:** the Property Appraiser cross-check (plan criterion 3) shows the 2026 roll does not list buyers as owners on recent sales; deed records become available (Clerk terms or a licensed feed) for faster alerts (B4); or related companies need grouping (registered agent or mailing address — inference, must be labelled).
+
+## D-015 · 2026-10-26 · Buyer Radar B2: buyer introduction letters, checked by the rules they were written under
+
+**Decision:**
+- From a buyer, GenCut drafts one letter introducing the agent to the company and offering to share opportunities in the ZIP codes and home types it has bought (`buyer-intro-v1`). Same flow as seller letters: one model call plus one retry, deterministic checks, a mail outreach action in state DRAFT, cost in `model_runs`.
+- The writer gets the company name, its top three ZIP codes and home types, and the agent's profile. Never addresses, prices, dates, counts, the mailing address or the score.
+- Checks: all seller-letter checks, plus no claimed intent, no claimed availability, and nothing about what the company bought or how it was found (letter text only; the strategy, which only the agent sees, may say what it bought). The company's own name is set aside before checking.
+- Each campaign's prompt and checks are looked up by its stored `prompt_version` (`draftKind` in core), so an edit is re-checked under the rules the letter was written with, and an unknown version fails clearly instead of being checked by the wrong rules.
+- Social posts stay seller-only: they market the agent around a seller's home, and a buyer has no such area.
+
+**Why:** the plan's evidence labels: past purchases are verified, current intent is not, so the letter is an offer and never a claim. Keying rules to the stored version keeps old campaigns stable when a new kind or version is added.
+
+**Revisit if:** buyer letters are sent (counsel review of mailing companies at their tax-mailing address first), or confirmed intent exists (B5 inbound buyers), which would allow a different letter.

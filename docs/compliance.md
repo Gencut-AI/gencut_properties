@@ -88,5 +88,11 @@ owners, veterans) are never read. See `docs/scoring.md`.
 - Florida Statutes §501.616 — http://www.leg.state.fl.us/statutes/index.cfm?App_mode=Display_Statute&URL=0500-0599/0501/Sections/0501.616.html
 - FCC fact sheet (Sept 2026) — https://docs.fcc.gov/public/attachments/DOC-424844A1.pdf
 - WhatsApp Business Messaging Policy — https://business.whatsapp.com/policy
+
+## WhatsApp assistant (agents only)
+
+The assistant answers the agent who linked their own number (D-017). It never messages
+owners, buyers or anyone else; it only replies to the linked agent inside the 24-hour window
+their message opens. It cannot approve or send outreach. "STOP" unlinks the number.
 - Fla. Admin. Code R. 61J2-10.025 (advertising) — https://www.law.cornell.edu/regulations/florida/Fla-Admin-Code-Ann-R-61J2-10-025
 - Florida Realtors on Rule 61J2-10.025 — https://www.floridarealtors.org/law-ethics/library/realtor-advertising-rules-florida

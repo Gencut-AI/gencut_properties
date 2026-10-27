@@ -117,7 +117,7 @@ describe('discovery job', () => {
     assert.deepEqual((await listOpportunities(sql, u, workspaceId)).map((o) => o.parcelId), ['A1', 'A3']);
     assert.ok(lines.every((l) => !l.includes('TEST OWNER') && !l.includes('EXAMPLE DR')), 'logs carry no names or addresses');
     // The same pass counts homes per ZIP code across the county (commercial rows not counted).
-    assert.deepEqual(await sql`SELECT zip, homes FROM county_zip_counts WHERE county_code = '23' ORDER BY zip`, [
+    assert.deepEqual([...(await sql`SELECT zip, homes FROM county_zip_counts WHERE county_code = '23' ORDER BY zip`)], [
       { zip: '33160', homes: 1 },
       { zip: '33180', homes: 3 },
     ]);

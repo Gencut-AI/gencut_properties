@@ -16,6 +16,7 @@ import {
   nalRowToParcel,
   nalRowToPrior,
   nalRowToTransaction,
+  residentialZip,
   rowZip,
 } from '@gencut/core';
 import {
@@ -25,6 +26,8 @@ import {
   completeTransactionImport,
   failTransactionImport,
   scoreWorkspaceBuyers,
+  storeZipIndex,
+  zipIndexDue,
   storeTransactions,
   transactionImportDue,
   workspacesToScoreBuyers,
@@ -87,7 +90,8 @@ export async function runDiscovery(opts: {
     }
     const zips = await coverageToImport(sql, county, choice.file.name);
     const wantTransactions = await transactionImportDue(sql, county, choice.file.name);
-    if (zips.length === 0 && !wantTransactions) continue;
+    const wantZipIndex = await zipIndexDue(sql, county, choice.file.name);
+    if (zips.length === 0 && !wantTransactions && !wantZipIndex) continue;
     if (zips.length) {
       log(`${name}: importing ${zips.length} ZIP code(s) from "${choice.file.name}"`);
       await claimCoverage(sql, county, zips);
@@ -108,9 +112,10 @@ export async function runDiscovery(opts: {
       }
       const byZip = new Map<string, StoredParcel[]>(zips.map((z) => [z, []]));
       const purchases: PropertyTransaction[] = [];
+      const homesByZip = new Map<string, number>();
       let index: Map<string, number> | null = null;
       let rows = 0;
-      // One pass over the file serves both the ZIP import and the county-wide purchases.
+      // One pass over the file serves the ZIP import, the county-wide purchases and the ZIP home counts.
       await source.rows(choice, (fields) => {
         if (!index) {
           index = headerIndex(fields);
@@ -119,6 +124,10 @@ export async function runDiscovery(opts: {
           return;
         }
         rows++;
+        if (wantZipIndex) {
+          const z = residentialZip(fields, index);
+          if (z) homesByZip.set(z, (homesByZip.get(z) ?? 0) + 1);
+        }
         if (wantTransactions) {
           const t = nalRowToTransaction(fields, index);
           if (t && t.countyCode === county) purchases.push(t);
@@ -144,6 +153,10 @@ export async function runDiscovery(opts: {
         );
         run.imports.push({ county, file: choice.file.name, zips, parcels });
         log(`${name}: read ${rows} rows, kept ${parcels} residential parcels in ${zips.join(', ')}; ${prior.size} matched on the previous roll`);
+      }
+      if (wantZipIndex) {
+        await storeZipIndex(sql, county, choice.file.name, choice.fileDate, homesByZip);
+        log(`${name}: counted homes in ${homesByZip.size} ZIP codes`);
       }
       if (wantTransactions) {
         await storeTransactions(sql, choice.file.name, choice.fileDate, purchases);

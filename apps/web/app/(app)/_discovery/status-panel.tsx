@@ -1,4 +1,5 @@
 import type { DiscoveryView } from '@gencut/services';
+import Link from 'next/link';
 import { discoveryHeadline } from '../../../lib/discovery-copy.ts';
 import { AutoRefresh } from './auto-refresh.tsx';
 
@@ -13,6 +14,11 @@ export function DiscoveryStatusPanel({ view, countyName, headingLevel = 2 }: { v
         <Heading className={`display font-semibold ${headingLevel === 1 ? 'text-3xl sm:text-4xl' : 'text-2xl'}`}>{h.title}</Heading>
       </div>
       <p className="mt-2 max-w-[65ch] text-ink-soft">{h.body}</p>
+      {h.action && (
+        <Link href={h.action.href} className="mt-4 inline-flex h-11 items-center rounded-full bg-bay px-6 text-sm font-medium text-paper hover:bg-bay-deep">
+          {h.action.label}
+        </Link>
+      )}
     </section>
   );
 }

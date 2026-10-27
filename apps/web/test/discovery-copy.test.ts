@@ -52,6 +52,18 @@ describe('discovery copy', () => {
     assert.match(h.body, /could not read the records for 33999/);
   });
 
+  it('says when the agent\'s ZIP codes have no homes, and points to the profile', () => {
+    const empty = (zip: string) => ({ zip, status: 'ready' as const, rollLabel: '2026 preliminary roll', fileDate: '2026-07-27', parcelCount: 0 });
+    const all = discoveryHeadline({ ...base, parcelsConsidered: 0, parcelsQualified: 0, opportunityCount: 0, coverage: [empty('33002'), empty('33299')] }, 'Miami-Dade');
+    assert.equal(all.title, 'Your ZIP codes have no homes');
+    assert.match(all.body, /^33002 and 33299 have no homes on the Miami-Dade property roll/);
+    assert.deepEqual(all.action, { href: '/profile', label: 'Change your ZIP codes' });
+    const some = discoveryHeadline({ ...base, coverage: [...base.coverage, empty('33299')] }, 'Miami-Dade');
+    assert.match(some.body, /33299 has no homes on the Miami-Dade roll\.$/);
+    assert.ok(some.action);
+    assert.equal(discoveryHeadline(base, 'Miami-Dade').action, undefined);
+  });
+
   it('formats money and dates compactly and without time-zone drift', () => {
     assert.equal(formatMoneyShort(1_250_000), '$1.3M');
     assert.equal(formatMoneyShort(2_000_000), '$2M');

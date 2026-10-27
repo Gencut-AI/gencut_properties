@@ -184,6 +184,18 @@ export function rowZip(fields: readonly string[], index: Map<string, number>): s
   return text(fields[index.get('PHY_ZIPCD') ?? -1]).slice(0, 5);
 }
 
+/**
+ * The situs ZIP of a residential row (a use code GenCut imports), or null. A
+ * cheap check, run on every row of a county roll to know which ZIP codes have
+ * homes at all; it does not apply the import's other exclusions.
+ */
+export function residentialZip(fields: readonly string[], index: Map<string, number>): string | null {
+  const useCode = text(fields[index.get('DOR_UC') ?? -1]).padStart(3, '0');
+  if (!(useCode in USE_CODES)) return null;
+  const zip = rowZip(fields, index);
+  return /^\d{5}$/.test(zip) ? zip : null;
+}
+
 function readSales(get: (k: string) => string | undefined): StoredSale[] {
   const sales: StoredSale[] = [];
   for (const n of ['1', '2']) {

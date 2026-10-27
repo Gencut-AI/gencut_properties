@@ -24,6 +24,9 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
   uploads: per workspace). For the FL DOR roll, `external_id` is `<county>:<parcel>` and
   the payload is a `StoredParcel` (core), not the raw row: current values, both sale slots,
   owner kind and the same parcel's values on the previous final roll.
+- `county_zip_counts` — homes per ZIP code on each county's latest roll, counted in the
+  worker's roll pass. A profile whose ZIP code has no homes in its county is refused, naming
+  the county it is in when known (a county not yet read refuses nothing).
 - `zip_coverage` — per county ZIP: import status (`pending` → `importing` → `ready` /
   `failed`), the roll file and its date, parcel count, and `import_version`. Raising
   `PARCEL_IMPORT_VERSION` in services re-imports every ZIP.

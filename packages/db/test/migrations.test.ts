@@ -41,6 +41,7 @@ describe('migrations', () => {
       'business_profiles',
       'campaigns',
       'consents',
+      'county_zip_counts',
       'data_sources',
       'media_assets',
       'memberships',

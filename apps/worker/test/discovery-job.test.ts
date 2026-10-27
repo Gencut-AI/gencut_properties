@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, it } from 'node:test';
+import { after, before, beforeEach, describe, it } from 'node:test';
 import type { RollChoice } from '@gencut/core';
 import {
   type RequestContext,
@@ -92,6 +92,11 @@ describe('discovery job', () => {
     await sql.end();
     tdb.drop();
   });
+  // Each test uses its own synthetic ZIP codes; the county's ZIP counts from an earlier
+  // test would (rightly) reject them, so every test starts before the county was counted.
+  beforeEach(async () => {
+    await sql`DELETE FROM county_zip_counts`;
+  });
 
   it('imports requested ZIPs from the roll, scores the workspace, and does nothing more on a second run', async () => {
     const u = user();
@@ -111,6 +116,11 @@ describe('discovery job', () => {
     assert.deepEqual(first.scored, [{ workspaceId, kept: 2 }]);
     assert.deepEqual((await listOpportunities(sql, u, workspaceId)).map((o) => o.parcelId), ['A1', 'A3']);
     assert.ok(lines.every((l) => !l.includes('TEST OWNER') && !l.includes('EXAMPLE DR')), 'logs carry no names or addresses');
+    // The same pass counts homes per ZIP code across the county (commercial rows not counted).
+    assert.deepEqual(await sql`SELECT zip, homes FROM county_zip_counts WHERE county_code = '23' ORDER BY zip`, [
+      { zip: '33160', homes: 1 },
+      { zip: '33180', homes: 3 },
+    ]);
 
     const second = await runDiscovery({ sql, source, asOf: ASOF });
     assert.deepEqual(second.imports, []);

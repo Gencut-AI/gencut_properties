@@ -22,7 +22,7 @@ import { recordAudit } from './audit.ts';
 import type { RequestContext } from './context.ts';
 import type { Db, Sql } from './db.ts';
 import { requireMembershipFor } from './membership.ts';
-import { type MarketKey, marketCountyCode } from './markets.ts';
+import { MARKETS, type MarketKey, marketCountyCode } from './markets.ts';
 
 /**
  * An opportunity must reach this score to be shown — in practice two or more
@@ -448,4 +448,49 @@ export async function getDiscoveryStatus(db: Db, ctx: RequestContext, workspaceI
       };
     }),
   };
+}
+
+// ------------------------------------------------------------------ ZIP codes per county
+
+/** Whether a county's ZIP-code home counts still need to be read from this roll file. */
+export async function zipIndexDue(sql: Sql, countyCode: string, file: string): Promise<boolean> {
+  const [row] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM county_zip_counts WHERE county_code = ${countyCode} AND source_file = ${file}
+  `;
+  return (row?.n ?? 0) === 0;
+}
+
+/** Replace a county's ZIP-code home counts with those read from `file`. */
+export async function storeZipIndex(sql: Sql, countyCode: string, file: string, fileDate: string, homes: ReadonlyMap<string, number>): Promise<void> {
+  const rows = [...homes].map(([zip, n]) => ({ zip, homes: n }));
+  await sql.begin(async (tx) => {
+    await tx`DELETE FROM county_zip_counts WHERE county_code = ${countyCode}`;
+    if (rows.length) {
+      await tx`
+        INSERT INTO county_zip_counts (county_code, zip, homes, source_file, file_date)
+        SELECT ${countyCode}, x.zip, x.homes, ${file}, ${fileDate}::date
+        FROM jsonb_to_recordset(${tx.json(rows as never)}) AS x(zip text, homes int)
+      `;
+    }
+  });
+}
+
+/**
+ * Focus ZIP codes with no homes on the county's roll, and the county each is in
+ * when another county's roll has it. Empty when the county has not been read
+ * yet: nothing is rejected on a guess.
+ */
+export async function zipsWithoutHomes(db: Db, market: MarketKey, zips: readonly string[]): Promise<{ zip: string; otherMarket: MarketKey | null }[]> {
+  if (zips.length === 0) return [];
+  const county = marketCountyCode(market);
+  const rows = await db<{ county_code: string; zip: string; homes: number }[]>`
+    SELECT county_code, zip, homes FROM county_zip_counts WHERE zip = ANY(${zips}::text[]) OR county_code = ${county}
+  `;
+  if (!rows.some((r) => r.county_code === county)) return [];
+  return zips
+    .filter((z) => !rows.some((r) => r.county_code === county && r.zip === z && r.homes > 0))
+    .map((zip) => {
+      const other = rows.find((r) => r.zip === zip && r.county_code !== county && r.homes > 0);
+      return { zip, otherMarket: (other && MARKETS.find((m) => m.countyCode === other.county_code)?.key) ?? null };
+    });
 }

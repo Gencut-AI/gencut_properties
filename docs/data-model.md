@@ -24,6 +24,9 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
   uploads: per workspace). For the FL DOR roll, `external_id` is `<county>:<parcel>` and
   the payload is a `StoredParcel` (core), not the raw row: current values, both sale slots,
   owner kind and the same parcel's values on the previous final roll.
+- `county_zip_counts` — homes per ZIP code on each county's latest roll, counted in the
+  worker's roll pass. A profile whose ZIP code has no homes in its county is refused, naming
+  the county it is in when known (a county not yet read refuses nothing).
 - `zip_coverage` — per county ZIP: import status (`pending` → `importing` → `ready` /
   `failed`), the roll file and its date, parcel count, and `import_version`. Raising
   `PARCEL_IMPORT_VERSION` in services re-imports every ZIP.
@@ -72,6 +75,16 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 - `audit_events` — append-only (update/delete raise an error): actor type and id,
   interface (`web`, `whatsapp`, `worker`, `api`), entity, action, from/to state, detail
   (e.g. the full gate decision).
+
+## WhatsApp assistant
+
+- `whatsapp_links` — an agent's number (`wa_id`, digits) linked to a user; one active per
+  number and per user; `revoked_at` on unlink.
+- `whatsapp_link_codes` — one-time link codes, hashed, 15-minute expiry, `used_at`.
+- `whatsapp_messages` — every message in and out. Inbound rows are the work queue
+  (`received` → `processing` → `done` / `failed`), unique by WhatsApp message id.
+- `whatsapp_sessions` — per number: the last numbered list shown, last inbound time (the
+  24-hour reply window), failed link attempts.
 
 ## Coming next
 

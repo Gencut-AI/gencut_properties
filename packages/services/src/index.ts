@@ -13,3 +13,4 @@ export * from './outcomes.ts';
 export * from './images.ts';
 export * from './film-crew.ts';
 export * from './buyers.ts';
+export * from './whatsapp.ts';

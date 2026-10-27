@@ -183,3 +183,18 @@ can give exact purchase dates.
 **Why:** the profile must state only what the record supports. A per-parcel copy of a bulk price is not what the company paid for that home.
 
 **Revisit if:** the Property Appraiser cross-check shows other codes (03 new construction, 06 cross-county) distort profiles, or homebuilders crowd the list (a "builder" label from use code 000 lots is possible but would be inference).
+
+## D-017 · 2026-10-27 · WhatsApp assistant, slice 1: agents only, Meta Cloud API, read and draft
+
+**Decision:**
+- An agent links their own WhatsApp number to their GenCut account with a one-time code made on the Profile page (6 digits, stored hashed, 15 minutes, single use; 5 wrong codes in an hour block the number). Display names are never trusted. One active link per number and per user; linking and unlinking are audited. "STOP" or Unlink on Profile removes the link.
+- Provider: Meta's WhatsApp Cloud API directly (no reseller), behind a `ChatSender` interface so another provider or channel can replace it. Webhook POSTs are checked with the app secret's HMAC-SHA256 signature before anything is read; messages are stored once each by WhatsApp message id and answered by a background function that claims them, so retries never double-answer.
+- What an agent can do: what is new; best sellers; best buyers; campaigns; details of a numbered item; save or dismiss; draft a letter (the same `startCampaignDraft` / `generateCampaignDraft` as the web, sent back when written). Every action uses the web app's services with a context built from the linked user (`via: 'whatsapp'`), so permissions and tenant checks are identical.
+- Understanding: a deterministic parser first. Text it does not know goes to the fast model, which may only answer with one of the parser's commands; its answer is parsed again and numbers must come from the last list. Linking and unlinking are never inferred. Model calls are logged in `model_runs` (`assistant_intent`).
+- Not in slice 1: approving or sending anything (the web has no approval yet either), messages to prospects (D-007 stands), notifications GenCut starts on its own (they need approved templates), media.
+
+**Costs:** Meta bills per delivered message. Since 1 Oct 2026, replies inside the 24-hour window are free only for the first 1,000 per business number per month ([Meta pricing](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing)). The fast model costs well under a cent per message it reads, and only for messages the parser does not understand.
+
+**Why:** the spec requires one source of truth for web and WhatsApp and an authenticated association, not display names. Keeping slice 1 to reading and drafting keeps every consequential action behind the web app's review until approvals exist.
+
+**Revisit if:** approvals ship on the web (then "approve" over WhatsApp with a confirmation step), notifications are wanted (template approval with Meta), or message volume passes the free tier.

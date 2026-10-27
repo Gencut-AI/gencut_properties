@@ -19,7 +19,7 @@ Architecture decisions: `docs/decisions.md`.
 | --- | --- |
 | `packages/core` | Domain services shared by every interface: state machines, permissions, compliance gate, scoring, audit events. No I/O, no npm dependencies. |
 | `packages/db` | Postgres schema as SQL migrations (`migrations/NNNN_name.{up,down}.sql`), the `psql`-based runner, schema tests. |
-| `apps/web` | Next.js 16 PWA: pages, API routes (`/api/health`), later the WhatsApp webhook. Background functions live in `apps/web/functions-src/` and are bundled at build time (never edit `netlify/functions/*.mjs`). Deployed to Netlify project `gencutv1` (`apps/web/netlify.toml`). |
+| `apps/web` | Next.js 16 PWA: pages, API routes (`/api/health`, the WhatsApp webhook `/api/whatsapp/webhook`). Background functions live in `apps/web/functions-src/` and are bundled at build time (never edit `netlify/functions/*.mjs`). Deployed to Netlify project `gencutv1` (`apps/web/netlify.toml`). |
 | `apps/worker` | Background jobs. Now: discovery (FL DOR roll import + scoring, `.github/workflows/discovery.yml`). Later: agent runs, rendering, approved outreach execution. |
 | `scripts/` | Repository lint and local tooling. |
 | `docs/` | Architecture, product, agents, data model, decisions, development. |

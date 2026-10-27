@@ -1,7 +1,7 @@
 import { CHANNELS, type Channel, PROPERTY_USES, type WorkspacePermissions } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
-import { requestDiscovery } from './discovery.ts';
+import { requestDiscovery, zipsWithoutHomes } from './discovery.ts';
 import { MARKETS, type MarketKey } from './markets.ts';
 import { type MembershipRole, requireMembership } from './membership.ts';
 import type { RequestContext } from './context.ts';
@@ -177,6 +177,16 @@ export async function saveBusinessProfile(
     throw new ServiceError('invalid', 'Some details need fixing.', fields);
   }
   const v = parsed.data;
+  // A ZIP code with no homes in the chosen county would quietly find nothing (a P.O.-box ZIP, or one in another county).
+  const empty = await zipsWithoutHomes(sql, v.market, [...new Set(v.focusZips)]);
+  if (empty.length) {
+    const county = MARKETS.find((m) => m.key === v.market)?.label ?? v.market;
+    const elsewhere = empty.filter((e) => e.otherMarket).map((e) => `${e.zip} is in ${MARKETS.find((m) => m.key === e.otherMarket)?.label}`);
+    const message = `${empty.map((e) => e.zip).join(', ')} ${empty.length === 1 ? 'has' : 'have'} no homes on the ${county} property roll${
+      elsewhere.length ? ` (${elsewhere.join('; ')})` : ''
+    }. Use the ZIP codes of the neighborhoods you work; P.O.-box ZIP codes have no homes.`;
+    throw new ServiceError('invalid', 'Some details need fixing.', { focusZips: message });
+  }
   const focus = {
     zips: [...new Set(v.focusZips)],
     propertyUses: [...new Set(v.propertyUses)],

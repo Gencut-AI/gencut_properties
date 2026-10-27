@@ -18,6 +18,7 @@ export const AUDIT_ENTITY_TYPES = [
   'permission',
   'consent',
   'suppression',
+  'whatsapp_link',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 

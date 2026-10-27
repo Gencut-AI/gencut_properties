@@ -18,6 +18,14 @@ import { build } from 'esbuild';
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = join(webDir, 'functions-src');
 
+/**
+ * The site's own address, fixed at build time the same way next.config.ts sets it for the
+ * app, so a function can link to the app without trusting anything in its request.
+ */
+export function buildTimeSiteUrl(env: Record<string, string | undefined> = process.env): string {
+  return (env.CONTEXT === 'production' ? env.URL : env.DEPLOY_PRIME_URL) ?? '';
+}
+
 export async function bundleFunctions(outDir: string = join(webDir, 'netlify', 'functions')): Promise<string[]> {
   const entries = readdirSync(srcDir).filter((f) => f.endsWith('.mts') || f.endsWith('.ts'));
   const outputs: string[] = [];
@@ -32,6 +40,7 @@ export async function bundleFunctions(outDir: string = join(webDir, 'netlify', '
       target: 'node22',
       // Some dependencies call require() for Node built-ins; give the ES module one.
       banner: { js: "import { createRequire as __gencutCreateRequire } from 'node:module'; const require = __gencutCreateRequire(import.meta.url);" },
+      define: { 'process.env.GENCUT_SITE_URL': JSON.stringify(buildTimeSiteUrl()) },
       logLevel: 'warning',
       legalComments: 'none',
     });

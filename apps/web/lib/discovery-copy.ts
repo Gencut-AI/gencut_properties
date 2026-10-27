@@ -41,6 +41,8 @@ export interface DiscoveryHeadline {
   readonly body: string;
   /** Still working: the page should refresh itself. */
   readonly working: boolean;
+  /** A next step the agent should take, when there is one. */
+  readonly action?: { readonly href: string; readonly label: string };
 }
 
 function list(items: readonly string[]): string {
@@ -87,6 +89,19 @@ export function discoveryHeadline(v: DiscoveryView, countyName: string): Discove
       working: false,
     };
   }
+  // ZIP codes read from the roll that turned out to have no homes at all (P.O.-box ZIPs, or another county's).
+  const emptyZips = v.coverage.filter((c) => c.status === 'ready' && c.parcelCount === 0).map((c) => c.zip);
+  const fixZips = { href: '/profile', label: 'Change your ZIP codes' };
+  if (emptyZips.length && emptyZips.length === v.coverage.length) {
+    return {
+      phase: 'ready',
+      title: 'Your ZIP codes have no homes',
+      body: `${list(emptyZips)} ${emptyZips.length === 1 ? 'has' : 'have'} no homes on the ${countyName} property roll. They may be P.O.-box ZIP codes or in another county. Enter the ZIP codes of the neighborhoods you work in your profile.`,
+      working: false,
+      action: fixZips,
+    };
+  }
+  const emptyNote = emptyZips.length ? ` ${list(emptyZips)} ${emptyZips.length === 1 ? 'has' : 'have'} no homes on the ${countyName} roll.` : '';
   const considered = v.parcelsConsidered ?? 0;
   const qualified = v.parcelsQualified ?? 0;
   const shown = v.opportunityCount ?? 0;
@@ -98,5 +113,11 @@ export function discoveryHeadline(v: DiscoveryView, countyName: string): Discove
       : `${formatCount(considered)} homes in your focus area reviewed from ${source}. ${formatCount(qualified)} showed seller signals${
           qualified > shown ? `; the strongest ${formatCount(shown)} are here` : ''
         }.${failedNote}`;
-  return { phase: 'ready', title: shown ? `${formatCount(shown)} opportunities` : 'No strong signals yet', body, working: false };
+  return {
+    phase: 'ready',
+    title: shown ? `${formatCount(shown)} opportunities` : 'No strong signals yet',
+    body: `${body}${emptyNote}`,
+    working: false,
+    ...(emptyZips.length ? { action: fixZips } : {}),
+  };
 }

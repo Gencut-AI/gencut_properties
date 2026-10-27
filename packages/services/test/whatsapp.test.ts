@@ -229,8 +229,8 @@ describe('WhatsApp assistant', () => {
     const [refused] = await say(waId, 'send it to the owner now', { sender, router: null });
     assert.match(refused?.text ?? '', /Sending, approving and mailing are done in the app/);
 
-    const [{ n: audited }] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM audit_events WHERE workspace_id = ${workspaceId} AND via = 'whatsapp'`;
-    assert.ok(audited >= 2, 'actions taken from WhatsApp are audited as such');
+    const [audited] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM audit_events WHERE workspace_id = ${workspaceId} AND via = 'whatsapp'`;
+    assert.ok((audited?.n ?? 0) >= 2, 'actions taken from WhatsApp are audited as such');
   });
 
   it('keeps accounts apart: a number sees only its own agent, and the web can unlink it', async () => {

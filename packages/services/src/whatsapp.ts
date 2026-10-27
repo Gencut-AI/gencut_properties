@@ -10,7 +10,7 @@
  * and permission checks are identical. Nothing here messages prospects, sends
  * outreach or approves anything (D-007, D-017).
  */
-import { createHash, createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   ASSISTANT_INTENT_PROMPT_VERSION,
   type Command,
@@ -212,10 +212,9 @@ export class WhatsAppCloudSender implements ChatSender {
 /** Keeps replies in memory, for tests. */
 export class RecordedSender implements ChatSender {
   readonly sent: { to: string; reply: Reply }[] = [];
-  private n = 0;
   async send(to: string, reply: Reply): Promise<string | null> {
     this.sent.push({ to, reply });
-    return `wamid.recorded.${++this.n}`;
+    return `wamid.recorded.${randomUUID()}`;
   }
 }
 
@@ -371,6 +370,7 @@ async function reply(sql: Sql, deps: AssistantDeps, waId: string, userId: string
     await sql`
       INSERT INTO whatsapp_messages (wamid, direction, wa_id, user_id, kind, body, status, sent_at)
       VALUES (${wamid}, 'out', ${waId}, ${userId}, ${r.buttons?.length ? 'button' : 'text'}, ${fitReply(r.text)}, 'sent', now())
+      ON CONFLICT (wamid) DO NOTHING
     `;
   } catch (e) {
     await sql`

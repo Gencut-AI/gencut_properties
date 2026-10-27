@@ -365,13 +365,9 @@ export async function processInbound(sql: Sql, deps: AssistantDeps, limit = 20):
 }
 
 async function reply(sql: Sql, deps: AssistantDeps, waId: string, userId: string | null, r: Reply): Promise<void> {
+  let wamid: string | null;
   try {
-    const wamid = await deps.sender.send(waId, r);
-    await sql`
-      INSERT INTO whatsapp_messages (wamid, direction, wa_id, user_id, kind, body, status, sent_at)
-      VALUES (${wamid}, 'out', ${waId}, ${userId}, ${r.buttons?.length ? 'button' : 'text'}, ${fitReply(r.text)}, 'sent', now())
-      ON CONFLICT (wamid) DO NOTHING
-    `;
+    wamid = await deps.sender.send(waId, r);
   } catch (e) {
     await sql`
       INSERT INTO whatsapp_messages (direction, wa_id, user_id, kind, body, status, error)
@@ -379,6 +375,12 @@ async function reply(sql: Sql, deps: AssistantDeps, waId: string, userId: string
     `;
     throw e;
   }
+  // Sent: record it as sent. A record that cannot be written must not make a sent reply look failed.
+  await sql`
+    INSERT INTO whatsapp_messages (wamid, direction, wa_id, user_id, kind, body, status, sent_at)
+    VALUES (${wamid}, 'out', ${waId}, ${userId}, ${r.buttons?.length ? 'button' : 'text'}, ${fitReply(r.text)}, 'sent', now())
+    ON CONFLICT (wamid) DO NOTHING
+  `;
   if (r.listed) {
     await sql`
       INSERT INTO whatsapp_sessions (wa_id, listed) VALUES (${waId}, ${sql.json(r.listed as never)})

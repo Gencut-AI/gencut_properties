@@ -15,3 +15,5 @@ export * from './buyers/buyer-radar.ts';
 export * from './buyers/buyer-letter.ts';
 export * from './campaign/draft-kinds.ts';
 export * from './outcomes/outcomes.ts';
+export * from './assistant/commands.ts';
+export * from './assistant/replies.ts';

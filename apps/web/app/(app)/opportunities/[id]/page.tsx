@@ -1,5 +1,5 @@
 import { isQualifiedSale, ownerKindOf } from '@gencut/core';
-import { getOpportunity, isServiceError, listCampaigns, listOutcomes } from '@gencut/services';
+import { getOpportunity, isServiceError, listCampaigns, listOutcomes, matchesForSeller } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -11,6 +11,7 @@ import { requireSession } from '../../../../lib/session.ts';
 import { startCampaignAction } from '../../_campaign/actions.ts';
 import { CAMPAIGN_STATUS_LABEL } from '../../_campaign/labels.ts';
 import { OutcomeForm } from '../../_campaign/outcome-form.tsx';
+import { MatchList } from '../../_matches/match-list.tsx';
 import { Score } from '../../_discovery/score.tsx';
 import { TriageButtons } from '../../_discovery/triage-buttons.tsx';
 
@@ -76,9 +77,10 @@ export default async function OpportunityPage({
         .join('; ')
     : `None recorded on the ${p.prior ? 'last two rolls' : 'current roll'}`;
   const ownerKind = p.ownerKind ?? ownerKindOf(p.owner.name);
-  const [campaigns, outcomes] = await Promise.all([
+  const [campaigns, outcomes, matches] = await Promise.all([
     listCampaigns(db(), ctx, workspace.workspaceId, { opportunityId: o.id }),
     listOutcomes(db(), ctx, workspace.workspaceId, o.id),
+    matchesForSeller(db(), ctx, workspace.workspaceId, o.id),
   ]);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -150,7 +152,20 @@ export default async function OpportunityPage({
         </dl>
       </section>
 
- <section aria-labelledby="campaign" className="rounded-panel border border-glass-deep p-6">
+      <MatchList
+        heading="Investors whose past purchases fit this home"
+        empty="None of your investor buyers has bought this kind of home in this ZIP code."
+        rows={matches.map((m) => ({
+          id: m.buyerId,
+          href: `/buyers/${m.buyerId}`,
+          title: m.name,
+          subtitle: `${m.purchases} verified purchases`,
+          score: m.score,
+          reasons: m.reasons,
+        }))}
+      />
+
+      <section aria-labelledby="campaign" className="rounded-panel border border-glass-deep p-6">
         <h2 id="campaign" className="display text-xl font-semibold">
           Campaign
         </h2>

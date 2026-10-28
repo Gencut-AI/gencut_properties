@@ -227,3 +227,9 @@ can give exact purchase dates.
 **Why this is cheap to switch:** the assistant (commands, conversation, replies, session) lives in `packages/core` and `packages/services/src/whatsapp.ts` behind a `ChatSender` interface; only the webhook parser and the sender are WhatsApp-specific. A second channel is a new webhook route and sender, about a day of work.
 
 **Revisit when:** Meta answers the business verification, or rejects a number or template.
+
+## D-020 · 2026-10-28 · Seller–buyer matching v1 (B3), agent-only, computed on read
+
+**Decision:** a buyer matches a seller opportunity when its verified purchases include the home's ZIP code and its kind of home (`match-v1`: ZIP 40–50, kind 25, roll market value inside 80–120% of its single-home prices 15, latest purchase within 12 months of the roll 10). The seller page lists the five best-fitting investors; the buyer page lists the five best-fitting seller opportunities. Both say a match is a fit with past purchases, not a sign of buying, and not permission to contact anyone; only the agent sees them. Matches are computed from the workspace's own records when the page loads, so they are never stale.
+
+**Not yet:** storing matches with a status ("useful / not useful") to measure them, and offering matches over WhatsApp. Both come next if agents use them.

@@ -426,3 +426,66 @@ export async function updateCampaignLetter(
     return draft;
   })) as CampaignDraft;
 }
+
+/** Version of the instruction wrapped around a letter revision; recorded on every model run. */
+export const LETTER_REVISION_VERSION = 'revise-v1';
+
+/**
+ * Rewrite a draft letter following the agent's instruction ("shorter", "mention
+ * I grew up here"). The model gets the same rules and facts the letter was
+ * written under; the result must pass the same checks, then is saved through
+ * `updateCampaignLetter` like an edit made in the app. One retry with the
+ * problems listed. The outreach action stays a DRAFT.
+ */
+export async function reviseCampaignLetter(
+  sql: Sql,
+  ctx: RequestContext,
+  workspaceId: string,
+  campaignId: string,
+  instruction: string,
+  router: ModelRouter,
+): Promise<CampaignDraft> {
+  await requireMembershipFor(sql, ctx, workspaceId);
+  if (!(await hasPermission(sql, workspaceId, 'generate'))) throw new ServiceError('forbidden', 'Preparing campaigns is turned off for this workspace.');
+  const row = await campaignRow(sql, workspaceId, campaignId);
+  if (row.status !== 'review' || !row.draft) throw new ServiceError('invalid', 'Only a draft in review can be rewritten.');
+  const kind = draftKind(row.prompt_version);
+  if (!kind) throw new ServiceError('invalid', 'This campaign was written with rules GenCut no longer supports. Start a new campaign.');
+  const [profile] = await sql<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
+  if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
+  const agent = agentFrom(profile);
+  const facts = row.facts ?? [];
+  const ask = instruction.trim().slice(0, 300);
+  if (!ask) throw new ServiceError('invalid', 'Say how the letter should change.');
+  const route = router.route(DRAFT_ROLE);
+  const run = { workspaceId, campaignId, purpose: 'letter_revision', role: DRAFT_ROLE, promptVersion: `${kind.version}+${LETTER_REVISION_VERSION}`, factKeys: facts.map((f) => f.key) };
+
+  let problems: string[] = [];
+  for (let attempt = 1; attempt <= MAX_DRAFT_ATTEMPTS; attempt++) {
+    const base = kind.prompt(facts, problems);
+    const user = `${base.user}\n\nThis is the current draft. Rewrite it following the agent's instruction, and keep everything else that already works. Return the whole draft in the same JSON shape.\n\nCurrent draft:\n${JSON.stringify(row.draft)}\n\nAgent's instruction: ${ask}`;
+    let response;
+    try {
+      response = await router.complete({ role: DRAFT_ROLE, system: base.system, user, maxOutputTokens: 3000 });
+    } catch (e) {
+      await recordModelRun(sql, run, { ok: false, provider: route.provider, model: route.model, error: e instanceof Error ? e.message : String(e) });
+      throw new ServiceError('invalid', 'The rewrite could not be written right now. Try again in a minute, or edit it in the app.');
+    }
+    await recordModelRun(sql, run, { ok: true, response });
+    let parsed;
+    try {
+      parsed = parseCampaignDraft(extractJson(response.text));
+    } catch {
+      parsed = null;
+    }
+    if (!parsed?.ok) {
+      problems = ['The reply was not the JSON draft asked for.'];
+      continue;
+    }
+    const candidate: CampaignDraft = { ...row.draft, letter: parsed.value.letter };
+    const found = kind.check(candidate, facts, agent);
+    if (found.length === 0) return updateCampaignLetter(sql, ctx, workspaceId, campaignId, candidate.letter);
+    problems = found.map((p) => p.message);
+  }
+  throw new ServiceError('invalid', `The rewrite did not pass GenCut's checks (${problems.slice(0, 2).join(' ')}). The letter is unchanged.`);
+}

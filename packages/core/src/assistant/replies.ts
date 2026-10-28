@@ -27,7 +27,8 @@ export function helpReply(siteUrl: string): Reply {
   return {
     text: [
       '*GenCut on WhatsApp*',
-      'Send:',
+      'Talk to me normally, or send:',
+      '• *next*: the one lead most worth a letter now',
       '• *new*: what is new today',
       '• *sellers*: your best seller opportunities',
       '• *buyers*: your best investor buyers',
@@ -35,6 +36,8 @@ export function helpReply(siteUrl: string): Reply {
       '• a number, like *2*: details of item 2 in the last list',
       '• *draft 2*: write a letter for item 2 (nothing is sent)',
       '• *save 2* / *dismiss 2*',
+      '• *shorter*, *warmer* or "edit: …": change the letter on screen',
+      '• "2 replied", "meeting set": record what happened',
       '• *stop*: unlink this number',
       '',
       `Everything else is in the app: ${siteUrl}`,

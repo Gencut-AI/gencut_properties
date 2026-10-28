@@ -84,7 +84,8 @@ Source of truth: `packages/db/migrations/*.up.sql`. This page explains it.
 - `whatsapp_messages` — every message in and out. Inbound rows are the work queue
   (`received` → `processing` → `done` / `failed`), unique by WhatsApp message id.
 - `whatsapp_sessions` — per number: the last numbered list shown, last inbound time (the
-  24-hour reply window), failed link attempts.
+  24-hour reply window), failed link attempts, the open yes/no question (`pending`), the item
+  or letter being discussed (`focus`), and items already suggested.
 
 ## Coming next
 

@@ -3,6 +3,7 @@
 import { isServiceError, saveBusinessProfile } from '@gencut/services';
 import { redirect } from 'next/navigation';
 import { db } from '../../../lib/db.ts';
+import { requestDiscoveryRun } from '../../../lib/discovery-trigger.ts';
 import { safeNextPath } from '../../../lib/safe-redirect.ts';
 import { requireSession } from '../../../lib/session.ts';
 
@@ -64,5 +65,8 @@ export async function saveProfileAction(_prev: ProfileFormState, form: FormData)
     if (isServiceError(e)) return { status: 'error', message: e.message, fields: { ...e.fields }, values };
     throw e;
   }
+  // Results in minutes rather than at the next scheduled run. Never blocks or fails the save.
+  const run = await requestDiscoveryRun();
+  console.log(`[profile-save] ${JSON.stringify({ discoveryRun: run })}`);
   redirect(safeNextPath(text('next'), '/home'));
 }

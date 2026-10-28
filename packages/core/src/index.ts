@@ -18,3 +18,4 @@ export * from './matching/match.ts';
 export * from './outcomes/outcomes.ts';
 export * from './assistant/commands.ts';
 export * from './assistant/replies.ts';
+export * from './assistant/chat.ts';

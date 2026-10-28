@@ -191,7 +191,7 @@ describe('WhatsApp assistant', () => {
     // The letter the model "writes" is for the first home in the list, as the list will be ordered.
     const first = (await listOpportunities(sql, u, workspaceId, { limit: 5 }))[0]!;
     const house = Number(first.address.split(' ')[0]);
-    const provider = new RecordedProvider([modelReply({ command: 'sellers' }), modelReply(letter(house))]);
+    const provider = new RecordedProvider([modelReply({ reply: 'Here are the strongest ones in your area.', action: 'sellers' }), modelReply(letter(house))]);
     let t = 0;
     const router = new ModelRouter({ providers: { anthropic: provider }, now: () => (t += 500) });
     const deps = { sender, router };
@@ -204,7 +204,8 @@ describe('WhatsApp assistant', () => {
     assert.equal(provider.calls.length, 1, 'free text the parser did not know went to the fast model');
     assert.match(list?.text ?? '', new RegExp(`Best seller opportunities[\\s\\S]*1\\. ${house} EXAMPLE WAY`));
     const [run] = await sql<{ purpose: string; role: string; prompt_version: string }[]>`SELECT purpose, role, prompt_version FROM model_runs WHERE workspace_id = ${workspaceId}`;
-    assert.deepEqual(run, { purpose: 'assistant_intent', role: 'fast', prompt_version: 'assistant-intent-v1' });
+    assert.deepEqual(run, { purpose: 'assistant_chat', role: 'fast', prompt_version: 'assistant-chat-v1' });
+    assert.match(list?.text ?? '', /^Here are the strongest ones in your area\.\n\n\*Best seller/, 'the model\'s words, then the list');
 
     const [detail] = await say(waId, '2', deps);
     assert.match(detail?.text ?? '', /Public record: https:\/\/app\.example\.com\/opportunities\//);
@@ -231,6 +232,50 @@ describe('WhatsApp assistant', () => {
 
     const [audited] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM audit_events WHERE workspace_id = ${workspaceId} AND via = 'whatsapp'`;
     assert.ok((audited?.n ?? 0) >= 2, 'actions taken from WhatsApp are audited as such');
+  });
+
+  it('talks like an assistant: suggests one lead, drafts on yes, rewrites on request, records what happened', async () => {
+    const { u, workspaceId } = await agent('33405');
+    const waId = '13055550008';
+    const sender = new RecordedSender();
+    const sellers = await listOpportunities(sql, u, workspaceId, { limit: 5 });
+    const first = sellers[0]!;
+    const house = Number(first.address.split(' ')[0]);
+    const shorter: CampaignDraft = { ...letter(house), letter: { ...letter(house).letter, paragraphs: ['I work with owners of single-family homes in Aventura, and would be glad to talk.'] } };
+    const provider = new RecordedProvider([
+      modelReply(letter(house)), // the draft, after "yes"
+      modelReply(shorter), // the rewrite, after "shorter"
+      modelReply({ reply: 'Great news, I sent them a thank-you.', action: 'outcome responded' }), // a reply that claims a send
+      modelReply({ reply: 'Which home do you mean?', action: 'none' }),
+    ]);
+    let t = 0;
+    const deps = { sender, router: new ModelRouter({ providers: { anthropic: provider }, now: () => (t += 500) }) };
+    await say(waId, `LINK ${(await createLinkCode(sql, u)).code}`, deps);
+
+    const [offer] = await say(waId, 'next', deps);
+    assert.match(offer?.text ?? '', new RegExp(`Worth a letter:\\* ${house} EXAMPLE WAY[\\s\\S]*Should I draft`));
+    assert.deepEqual(offer?.buttons?.map((b) => b.command), ['yes', 'no', 'details']);
+
+    const drafted = await say(waId, 'yes', deps, 'button');
+    assert.match(drafted.at(-1)?.text ?? '', /draft ready for review[\s\S]*Reply \*shorter\*/);
+
+    const [revised] = await say(waId, 'shorter', deps);
+    assert.match(revised?.text ?? '', /^\*Revised:\*[\s\S]*would be glad to talk[\s\S]*Nothing has been sent/);
+    const [campaign] = await listCampaigns(sql, u, workspaceId);
+    const [edited] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM audit_events WHERE entity_id = ${campaign!.id} AND action = 'letter_edited' AND via = 'whatsapp'`;
+    assert.equal(edited?.n, 1, 'saved through the same edit path as the app, and audited as WhatsApp');
+
+    const [noted] = await say(waId, 'the owner called me back!', deps);
+    assert.match(noted?.text ?? '', /^Noted for .*: they replied\./, 'the claim of a send was dropped; the outcome was recorded');
+    assert.ok(!(noted?.text ?? '').includes('thank-you'));
+    const [outcome] = await sql<{ outcome: string }[]>`SELECT outcome FROM opportunity_outcomes WHERE opportunity_id = ${first.id}`;
+    assert.equal(outcome?.outcome, 'responded');
+
+    const [question] = await say(waId, 'what about the other one?', deps);
+    assert.equal(question?.text, 'Which home do you mean?', 'just talking: a question back, no action');
+
+    const [none] = await say(waId, 'no', deps);
+    assert.match(none?.text ?? '', /no open question/);
   });
 
   it('keeps accounts apart: a number sees only its own agent, and the web can unlink it', async () => {

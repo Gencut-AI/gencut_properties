@@ -199,6 +199,35 @@ can give exact purchase dates.
 
 **Revisit if:** approvals ship on the web (then "approve" over WhatsApp with a confirmation step), notifications are wanted (template approval with Meta), or message volume passes the free tier.
 
+## D-018 · 2026-10-28 · WhatsApp slice 2: conversation, suggestions, letter edits, debriefs (Boardy-style)
+
+**Decision (Paul, 28 Oct: work like Boardy on WhatsApp, change nothing in the web app):**
+- Free text is a conversation. The fast model sees the agent's profile and counts, the last list, what is being discussed, the open question and the last 8 messages, and answers with a short reply plus at most one action from a fixed list (`assistant-chat-v1`). The action goes through the same parser and list check as typed text. The reply is dropped if it claims anything was sent, mailed, called or approved, or states a figure not in the context.
+- "next" offers the single best seller or buyer not yet offered (alternating), with its reason and "Should I draft…?"; "yes" drafts it, "no" skips it.
+- "shorter", "warmer" or "edit: …" rewrites the letter being discussed under the same rules and facts it was written with, checked the same way, and saved through the same edit path as the app (`reviseCampaignLetter`, `revise-v1`).
+- "2 replied", "meeting set" or a plain sentence records an outcome through `recordOutcome`, on the item or letter being discussed.
+- Session state per number (migration 0013): the open question, the item in focus, and items already suggested.
+- Not yet: a daily top-3 message (needs a Meta-approved template), voice notes (needs a speech-to-text provider), WhatsApp calls.
+
+**Why:** Boardy's WhatsApp experience is a conversation that proposes one thing at a time and asks before acting. The fixed action list and reply checks keep that conversation inside what the agent is allowed to do and what the records say.
+
+## D-019 · 2026-10-28 · Fallback if Meta does not approve WhatsApp (planned, not built)
+
+**Decision (Paul, 28 Oct):** stay on WhatsApp through Meta's official Cloud API. Keep a fallback ready on paper, and do not build it unless Meta refuses the business, the number or the templates.
+
+**Ruled out:** unofficial WhatsApp libraries that drive the WhatsApp Web client (Baileys, whatsapp-web.js, whatsmeow, and tools built on them such as Evolution API or Matrix bridges). They sit outside WhatsApp's terms, Meta detects them, and bans attach to the number, sometimes permanently ([summary with WhatsApp policy quotes](https://www.dragapp.com/blog/whatsapp-mcp-server/)). A banned business number would take the agents' channel down with no way back.
+
+**Fallback order, if needed:**
+1. Another official route to WhatsApp: a Business Solution Provider (for example Twilio or 360dialog). Same Meta rules, but they help with verification and templates.
+2. Telegram: an official, free [Bot API](https://core.telegram.org/bots/api), no template approval, rich buttons. Weaker in the US than WhatsApp, strong with international buyers.
+3. A chat inside the GenCut PWA, with web push for "your letter is ready". Needs nothing from anyone.
+4. SMS (Twilio), agent-facing only: needs A2P 10DLC registration; prospects stay out (D-007).
+5. Open-source inbox: [Chatwoot](https://github.com/chatwoot/chatwoot) (self-hosted) if agents want one inbox across channels; it uses the official APIs.
+
+**Why this is cheap to switch:** the assistant (commands, conversation, replies, session) lives in `packages/core` and `packages/services/src/whatsapp.ts` behind a `ChatSender` interface; only the webhook parser and the sender are WhatsApp-specific. A second channel is a new webhook route and sender, about a day of work.
+
+**Revisit when:** Meta answers the business verification, or rejects a number or template.
+
 ## D-020 · 2026-10-28 · Seller–buyer matching v1 (B3), agent-only, computed on read
 
 **Decision:** a buyer matches a seller opportunity when its verified purchases include the home's ZIP code and its kind of home (`match-v1`: ZIP 40–50, kind 25, roll market value inside 80–120% of its single-home prices 15, latest purchase within 12 months of the roll 10). The seller page lists the five best-fitting investors; the buyer page lists the five best-fitting seller opportunities. Both say a match is a fit with past purchases, not a sign of buying, and not permission to contact anyone; only the agent sees them. Matches are computed from the workspace's own records when the page loads, so they are never stale.

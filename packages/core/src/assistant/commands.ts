@@ -10,6 +10,8 @@
  * never produce an action the parser would not.
  */
 
+import { OUTCOMES, type Outcome } from '../outcomes/outcomes.ts';
+
 /** Items in the last numbered list the agent was shown; "2" refers to item 2. */
 export type ListedKind = 'seller' | 'buyer' | 'campaign';
 export interface ListedItem {
@@ -23,11 +25,20 @@ export type Command =
   | { readonly kind: 'help' }
   | { readonly kind: 'summary' }
   | { readonly kind: 'list'; readonly target: 'sellers' | 'buyers' | 'campaigns' }
-  | { readonly kind: 'show'; readonly n: number }
+  /** Details of item N, or of the item being discussed when n is null. */
+  | { readonly kind: 'show'; readonly n: number | null }
   | { readonly kind: 'draft'; readonly n: number }
   | { readonly kind: 'triage'; readonly n: number; readonly status: 'saved' | 'dismissed' }
   | { readonly kind: 'link'; readonly code: string }
   | { readonly kind: 'unlink' }
+  /** The next item worth acting on, offered with a yes/no question. */
+  | { readonly kind: 'suggest' }
+  /** An answer to the last yes/no question. */
+  | { readonly kind: 'confirm'; readonly yes: boolean }
+  /** Rewrite the letter last shown, following the agent's instruction. */
+  | { readonly kind: 'edit'; readonly instruction: string }
+  /** Record what happened with item N, or with the item last discussed when n is null. */
+  | { readonly kind: 'outcome'; readonly n: number | null; readonly outcome: Outcome }
   | { readonly kind: 'unknown' };
 
 /** A numbered reference: "2", "#2", "number 2", "the second one". */
@@ -57,6 +68,19 @@ export function parseCommand(text: string): Command {
   if (link?.[1]) return { kind: 'link', code: link[1] };
   if (/^(stop|unlink|unsubscribe|disconnect)$/.test(s)) return { kind: 'unlink' };
   if (/^(help|menu|commands|options|\?|what can you do)$/.test(s)) return { kind: 'help' };
+  if (/^(yes|y|yeah|yep|yup|sure|ok|okay|do it|go ahead|please do|si)$/.test(s)) return { kind: 'confirm', yes: true };
+  if (/^(no|n|nope|not now|pass|skip|no thanks)$/.test(s)) return { kind: 'confirm', yes: false };
+  if (/^(details|show details|more|tell me more|show me)$/.test(s)) return { kind: 'show', n: null };
+  if (/^(next|suggest|suggestion|whats next|what next|what should i do|who should i contact|whos next|another one|give me one)$/.test(s)) return { kind: 'suggest' };
+
+  const outcome = s.match(/^outcome(?:\s+(\d{1,2}))?\s+([a-z ]+)$/);
+  if (outcome?.[2]) {
+    const code = outcome[2].trim().replace(/\s+/g, '_');
+    if ((OUTCOMES as readonly string[]).includes(code)) return { kind: 'outcome', n: outcome[1] ? Number(outcome[1]) : null, outcome: code as Outcome };
+  }
+  const instruction = text.trim().replace(/^(edit|rewrite|revise)\s*:?\s*/i, '').slice(0, 300);
+  if (/^(edit|rewrite|revise)\b/.test(s) && instruction) return { kind: 'edit', instruction };
+  if (/^(make it )?(shorter|longer|warmer|friendlier|simpler|more formal|less formal|more casual|more personal)$/.test(s)) return { kind: 'edit', instruction: text.trim().slice(0, 300) };
 
   const n = ref(s);
   if (n !== null) {
@@ -108,7 +132,7 @@ export function commandFromIntent(value: unknown, listed: readonly ListedItem[])
     : '';
   if (!/^(help|new|sellers|buyers|campaigns|unknown|(show|draft|save|dismiss) \d{1,2})$/.test(text.trim())) return { kind: 'unknown' };
   const c = parseCommand(text);
-  if ('n' in c && !listed.some((i) => i.n === c.n)) return { kind: 'unknown' };
+  if ('n' in c && c.n !== null && !listed.some((i) => i.n === c.n)) return { kind: 'unknown' };
   if (c.kind === 'link' || c.kind === 'unlink') return { kind: 'unknown' };
   return c;
 }

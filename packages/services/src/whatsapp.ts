@@ -12,20 +12,31 @@
  */
 import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
-  ASSISTANT_INTENT_PROMPT_VERSION,
+  ASSISTANT_CHAT_PROMPT_VERSION,
   type Command,
   type ListedItem,
+  MAX_REPLY_CHARS,
   type Reply,
+  type SuggestionFacts,
+  chatPrompt,
+  checkChatReply,
+  fromChat,
+  letterRevisedReply,
+  noItemReply,
+  noLetterReply,
+  noSuggestionReply,
+  nothingPendingReply,
+  outcomeReply,
+  skippedReply,
+  suggestionReply,
   badCodeReply,
   buyerDetailReply,
   buyersReply,
   campaignsReply,
-  commandFromIntent,
   draftStartedReply,
   extractJson,
   fitReply,
   helpReply,
-  intentPrompt,
   letterReply,
   linkedReply,
   maskWaId,
@@ -44,11 +55,13 @@ import {
 import { ensureWorkspace, getBusinessProfile } from './accounts.ts';
 import { recordAudit } from './audit.ts';
 import { countBuyers, getBuyer, listBuyers } from './buyers.ts';
-import { generateCampaignDraft, getCampaign, listCampaigns, startCampaignDraft } from './campaigns.ts';
+import { generateCampaignDraft, getCampaign, listCampaigns, reviseCampaignLetter, startCampaignDraft } from './campaigns.ts';
 import type { RequestContext } from './context.ts';
 import type { Db, Sql } from './db.ts';
 import { isServiceError } from './errors.ts';
+import { MARKETS } from './markets.ts';
 import { type ModelRouter, recordModelRun } from './models.ts';
+import { recordOutcome } from './outcomes.ts';
 import { countOpportunities, getOpportunity, listOpportunities, setOpportunityStatus } from './opportunities.ts';
 
 // ------------------------------------------------------------------ configuration
@@ -389,6 +402,48 @@ async function reply(sql: Sql, deps: AssistantDeps, waId: string, userId: string
   }
 }
 
+/** What the conversation is about: an item from a list, or a letter. */
+interface Focus {
+  readonly kind: 'seller' | 'buyer' | 'campaign';
+  readonly id: string;
+  readonly label: string;
+  /** For a letter: the seller or buyer it is for. */
+  readonly opportunityId?: string | null;
+}
+
+/** The yes/no question GenCut last asked. Today the only one: "draft a letter for this?" */
+interface Pending {
+  readonly action: 'draft';
+  readonly kind: 'seller' | 'buyer';
+  readonly id: string;
+  readonly label: string;
+}
+
+interface Session {
+  listed: ListedItem[];
+  pending: Pending | null;
+  focus: Focus | null;
+  suggested: string[];
+}
+
+async function loadSession(sql: Sql, waId: string): Promise<Session> {
+  const [s] = await sql<Session[]>`SELECT listed, pending, focus, suggested FROM whatsapp_sessions WHERE wa_id = ${waId}`;
+  return { listed: s?.listed ?? [], pending: s?.pending ?? null, focus: s?.focus ?? null, suggested: s?.suggested ?? [] };
+}
+
+async function saveSession(sql: Sql, waId: string, patch: Partial<Session>): Promise<void> {
+  await sql`INSERT INTO whatsapp_sessions (wa_id) VALUES (${waId}) ON CONFLICT (wa_id) DO NOTHING`;
+  if (patch.pending !== undefined) {
+    await sql`UPDATE whatsapp_sessions SET pending = ${patch.pending === null ? null : sql.json(patch.pending as never)}, updated_at = now() WHERE wa_id = ${waId}`;
+  }
+  if (patch.focus !== undefined) {
+    await sql`UPDATE whatsapp_sessions SET focus = ${patch.focus === null ? null : sql.json(patch.focus as never)}, updated_at = now() WHERE wa_id = ${waId}`;
+  }
+  if (patch.suggested !== undefined) {
+    await sql`UPDATE whatsapp_sessions SET suggested = ${sql.json(patch.suggested.slice(-200) as never)}, updated_at = now() WHERE wa_id = ${waId}`;
+  }
+}
+
 async function handleMessage(sql: Sql, m: Claimed, deps: AssistantDeps): Promise<void> {
   const site = deps.siteUrl;
   let command = m.kind === 'other' ? ({ kind: 'unknown' } as Command) : parseCommand(m.body);
@@ -412,16 +467,25 @@ async function handleMessage(sql: Sql, m: Claimed, deps: AssistantDeps): Promise
   }
 
   const { workspaceId } = await ensureWorkspace(sql, ctx);
-  const [session] = await sql<{ listed: ListedItem[] }[]>`SELECT listed FROM whatsapp_sessions WHERE wa_id = ${m.wa_id}`;
-  const listed = session?.listed ?? [];
+  const session = await loadSession(sql, m.wa_id);
 
+  // Free text the parser does not recognise is a conversation: the model answers and may pick one action.
+  let said: string | null = null;
   if (command.kind === 'unknown' && m.kind === 'text' && deps.router) {
-    command = await understand(sql, deps.router, workspaceId, m.body, listed);
+    const turn = await converse(sql, deps.router, ctx, workspaceId, m, session);
+    command = turn.command;
+    said = turn.reply;
   }
 
   try {
-    const r = await act(sql, ctx, workspaceId, command, listed, deps, m.wa_id);
-    if (r) await reply(sql, deps, m.wa_id, ctx.userId, r);
+    const r = command.kind === 'unknown' ? null : await act(sql, ctx, workspaceId, command, session, deps, m.wa_id);
+    if (r) {
+      // One message: the model's own words first when short, then what the action produced.
+      const text = said && said.length <= 240 && r.text.length + said.length < MAX_REPLY_CHARS - 4 ? `${said}\n\n${r.text}` : r.text;
+      await reply(sql, deps, m.wa_id, ctx.userId, { ...r, text });
+    } else if (command.kind === 'unknown') {
+      await reply(sql, deps, m.wa_id, ctx.userId, said ? { text: said } : unknownReply(site));
+    }
   } catch (e) {
     // A refusal from a service (no permission, dismissed record…) is told to the agent as is.
     if (isServiceError(e)) return reply(sql, deps, m.wa_id, ctx.userId, { text: e.message });
@@ -435,36 +499,65 @@ async function contextFor(db: Db, userId: string): Promise<RequestContext | null
   return u ? { userId, email: u.email, via: 'whatsapp' } : null;
 }
 
-/** Free text the parser did not understand, mapped by the fast model to a command the parser accepts. */
-async function understand(sql: Sql, router: ModelRouter, workspaceId: string, text: string, listed: readonly ListedItem[]): Promise<Command> {
-  const prompt = intentPrompt(text, listed);
-  const run = { workspaceId, purpose: 'assistant_intent', role: 'fast' as const, promptVersion: ASSISTANT_INTENT_PROMPT_VERSION, factKeys: [] };
+const HISTORY_TURNS = 8;
+
+/** One conversational turn: the model's reply (checked) and at most one action from the fixed list. */
+async function converse(sql: Sql, router: ModelRouter, ctx: RequestContext, ws: string, m: Claimed, session: Session): Promise<{ reply: string | null; command: Command }> {
+  const [profile, sellers, buyers, campaigns] = await Promise.all([
+    getBusinessProfile(sql, ctx, ws),
+    countOpportunities(sql, ctx, ws),
+    countBuyers(sql, ctx, ws),
+    listCampaigns(sql, ctx, ws),
+  ]);
+  const history = (
+    await sql<{ direction: 'in' | 'out'; body: string }[]>`
+      SELECT direction, body FROM whatsapp_messages
+      WHERE wa_id = ${m.wa_id} AND id <> ${m.id} AND body <> '' AND status IN ('done', 'sent', 'failed')
+      ORDER BY created_at DESC LIMIT ${HISTORY_TURNS}
+    `
+  )
+    .reverse()
+    .map((h) => ({ from: h.direction === 'in' ? ('agent' as const) : ('gencut' as const), text: h.body }));
+  const facts = [
+    profile
+      ? `Agent: ${profile.licenseeName}, ${profile.brokerageName}; market ${MARKETS.find((x) => x.key === profile.market)?.label ?? profile.market}; ZIP codes ${profile.focusZips.join(', ')}; home types ${profile.propertyUses.join(', ')}`
+      : 'Agent has no business profile yet',
+    `In GenCut now: ${sellers.active} seller opportunities, ${buyers.active} investor buyers, ${campaigns.filter((c) => c.status === 'review').length} letters waiting for review`,
+    'GenCut finds people in Florida public property records; letters are drafts reviewed in the app; nothing is ever sent from WhatsApp',
+  ];
+  const chat = {
+    facts,
+    listed: session.listed,
+    focus: session.focus ? `${session.focus.kind} "${session.focus.label}"` : null,
+    pendingQuestion: session.pending ? `Draft a letter for ${session.pending.label}?` : null,
+  };
+  const prompt = chatPrompt(m.body, history, chat);
+  const run = { workspaceId: ws, purpose: 'assistant_chat', role: 'fast' as const, promptVersion: ASSISTANT_CHAT_PROMPT_VERSION, factKeys: [] };
   const route = router.route('fast');
   try {
-    const response = await router.complete({ role: 'fast', system: prompt.system, user: prompt.user, maxOutputTokens: 100 });
+    const response = await router.complete({ role: 'fast', system: prompt.system, user: prompt.user, maxOutputTokens: 400 });
     await recordModelRun(sql, run, { ok: true, response });
+    let parsed: { reply: string | null; command: Command };
     try {
-      return commandFromIntent(extractJson(response.text), listed);
+      parsed = fromChat(extractJson(response.text), session.listed);
     } catch {
-      return { kind: 'unknown' };
+      return { reply: null, command: { kind: 'unknown' } };
     }
+    // Facts the reply may repeat: the context, the list and the conversation so far.
+    const known = [prompt.user].join('\n');
+    return { reply: parsed.reply ? checkChatReply(parsed.reply, known) : null, command: parsed.command };
   } catch (e) {
     await recordModelRun(sql, run, { ok: false, provider: route.provider, model: route.model, error: e instanceof Error ? e.message : String(e) });
-    return { kind: 'unknown' };
+    return { reply: null, command: { kind: 'unknown' } };
   }
 }
 
-async function act(
-  sql: Sql,
-  ctx: RequestContext,
-  ws: string,
-  command: Command,
-  listed: readonly ListedItem[],
-  deps: AssistantDeps,
-  waId: string,
-): Promise<Reply | null> {
+const usd = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
+
+async function act(sql: Sql, ctx: RequestContext, ws: string, command: Command, session: Session, deps: AssistantDeps, waId: string): Promise<Reply | null> {
   const site = deps.siteUrl;
-  const item = 'n' in command ? listed.find((i) => i.n === command.n) : undefined;
+  const listed = session.listed;
+  const item = 'n' in command && command.n !== null ? listed.find((i) => i.n === command.n) : undefined;
   switch (command.kind) {
     case 'help':
       return helpReply(site);
@@ -512,36 +605,9 @@ async function act(
       return campaignsReply(items.map((c) => ({ id: c.id, title: c.title, status: CAMPAIGN_STATUS[c.status] ?? c.status })), site);
     }
     case 'show': {
-      if (!item) return noListReply;
-      if (item.kind === 'seller') {
-        const o = await getOpportunity(sql, ctx, ws, item.id);
-        return sellerDetailReply(
-          { id: o.id, address: o.address, city: o.city, zip: o.zip, propertyType: o.propertyType, score: o.score, marketValue: o.justValue, reasons: o.reasons.map((r) => r.text) },
-          item.n,
-          site,
-        );
-      }
-      if (item.kind === 'buyer') {
-        const b = await getBuyer(sql, ctx, ws, item.id);
-        const p = b.profile;
-        const usd = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`;
-        return buyerDetailReply(
-          {
-            id: b.id,
-            name: p.name,
-            purchases: p.purchases,
-            parcels: p.parcels ?? p.purchases,
-            window: `${monthLabel(p.first.year, p.first.month)} to ${monthLabel(p.latest.year, p.latest.month)}`,
-            zips: p.zips.map((z) => z.zip),
-            homeTypes: p.homeTypes.map((t) => t.label.toLowerCase()),
-            priceRange: p.price ? `${usd(p.price.min)} to ${usd(p.price.max)}` : null,
-            score: b.score,
-          },
-          item.n,
-          site,
-        );
-      }
-      return letterFor(sql, ctx, ws, item.id, site);
+      const target: Focus | null = item ? { kind: item.kind, id: item.id, label: item.label } : session.focus;
+      if (!target) return noListReply;
+      return showItem(sql, ctx, ws, target, item?.n ?? null, site, waId);
     }
     case 'triage': {
       if (!item) return noListReply;
@@ -551,27 +617,123 @@ async function act(
     }
     case 'draft': {
       if (!item) return noListReply;
-      if (item.kind === 'campaign') return letterFor(sql, ctx, ws, item.id, site);
-      const existing = await listCampaigns(sql, ctx, ws, { opportunityId: item.id });
-      if (existing[0]) return letterFor(sql, ctx, ws, existing[0].id, site);
-      if (!deps.router) return { text: `Letter drafting is not switched on for this site yet.` };
-      const { campaignId } = await startCampaignDraft(sql, ctx, ws, item.id);
-      await reply(sql, deps, waId, ctx.userId, draftStartedReply(item.label));
-      // Already in a background job: write the draft here and send it when it is ready.
-      await generateCampaignDraft(sql, campaignId, deps.router);
-      return letterFor(sql, ctx, ws, campaignId, site);
+      if (item.kind === 'campaign') return letterFor(sql, ctx, ws, item.id, site, waId);
+      return draftFor(sql, ctx, ws, item.id, item.label, deps, waId);
+    }
+    case 'suggest': {
+      const next = await nextSuggestion(sql, ctx, ws, session.suggested);
+      if (!next) return noSuggestionReply;
+      await saveSession(sql, waId, {
+        pending: { action: 'draft', kind: next.kind, id: next.id, label: next.label },
+        focus: { kind: next.kind, id: next.id, label: next.label },
+        suggested: [...session.suggested, next.id],
+      });
+      return suggestionReply(next);
+    }
+    case 'confirm': {
+      const p = session.pending;
+      if (!p) return nothingPendingReply;
+      await saveSession(sql, waId, { pending: null });
+      if (!command.yes) return skippedReply;
+      return draftFor(sql, ctx, ws, p.id, p.label, deps, waId);
+    }
+    case 'edit': {
+      const letter = session.focus?.kind === 'campaign' ? session.focus : null;
+      if (!letter) return noLetterReply;
+      if (!deps.router) return { text: 'Letter drafting is not switched on for this site yet.' };
+      const draft = await reviseCampaignLetter(sql, ctx, ws, letter.id, command.instruction, deps.router);
+      const c = await getCampaign(sql, ctx, ws, letter.id);
+      return letterRevisedReply(c.title, draft.letter.greeting, draft.letter.paragraphs, c.id, site);
+    }
+    case 'outcome': {
+      let target: { id: string; label: string } | null = null;
+      if (item) target = item.kind === 'campaign' ? await opportunityOfCampaign(sql, ctx, ws, item.id, item.label) : { id: item.id, label: item.label };
+      else if (session.focus) {
+        target = session.focus.kind === 'campaign' ? (session.focus.opportunityId ? { id: session.focus.opportunityId, label: session.focus.label } : null) : session.focus;
+      }
+      if (!target) return noItemReply;
+      await recordOutcome(sql, ctx, ws, target.id, { outcome: command.outcome, occurredOn: new Date().toISOString().slice(0, 10) });
+      return outcomeReply(target.label, command.outcome);
     }
     case 'link':
     case 'unlink':
-      return null; // handled before an account is resolved
     case 'unknown':
-      return unknownReply(site);
+      return null; // linking is handled before an account is resolved; unknown text gets the model's reply
   }
 }
 
-async function letterFor(sql: Sql, ctx: RequestContext, ws: string, campaignId: string, site: string): Promise<Reply> {
+async function showItem(sql: Sql, ctx: RequestContext, ws: string, target: Focus, n: number | null, site: string, waId: string): Promise<Reply> {
+  if (target.kind === 'campaign') return letterFor(sql, ctx, ws, target.id, site, waId);
+  // "Details" without a number offers one next step, answered with yes: draft a letter for it.
+  await saveSession(sql, waId, {
+    focus: { kind: target.kind, id: target.id, label: target.label },
+    ...(n === null ? { pending: { action: 'draft' as const, kind: target.kind, id: target.id, label: target.label } } : {}),
+  });
+  if (target.kind === 'seller') {
+    const o = await getOpportunity(sql, ctx, ws, target.id);
+    const r = sellerDetailReply(
+      { id: o.id, address: o.address, city: o.city, zip: o.zip, propertyType: o.propertyType, score: o.score, marketValue: o.justValue, reasons: o.reasons.map((x) => x.text) },
+      n ?? 0,
+      site,
+    );
+    return n === null ? { text: r.text, buttons: [{ title: 'Draft a letter', command: 'yes' }] } : r;
+  }
+  const b = await getBuyer(sql, ctx, ws, target.id);
+  const p = b.profile;
+  const r = buyerDetailReply(
+    {
+      id: b.id,
+      name: p.name,
+      purchases: p.purchases,
+      parcels: p.parcels ?? p.purchases,
+      window: `${monthLabel(p.first.year, p.first.month)} to ${monthLabel(p.latest.year, p.latest.month)}`,
+      zips: p.zips.map((z) => z.zip),
+      homeTypes: p.homeTypes.map((t) => t.label.toLowerCase()),
+      priceRange: p.price ? `${usd(p.price.min)} to ${usd(p.price.max)}` : null,
+      score: b.score,
+    },
+    n ?? 0,
+    site,
+  );
+  return n === null ? { text: r.text, buttons: [{ title: 'Draft a letter', command: 'yes' }] } : r;
+}
+
+/** Draft a letter for a seller or buyer, or show the one that already exists. */
+async function draftFor(sql: Sql, ctx: RequestContext, ws: string, opportunityId: string, label: string, deps: AssistantDeps, waId: string): Promise<Reply> {
+  const existing = await listCampaigns(sql, ctx, ws, { opportunityId });
+  if (existing[0]) return letterFor(sql, ctx, ws, existing[0].id, deps.siteUrl, waId);
+  if (!deps.router) return { text: 'Letter drafting is not switched on for this site yet.' };
+  const { campaignId } = await startCampaignDraft(sql, ctx, ws, opportunityId);
+  await reply(sql, deps, waId, ctx.userId, draftStartedReply(label));
+  // Already in a background job: write the draft here and send it when it is ready.
+  await generateCampaignDraft(sql, campaignId, deps.router);
+  return letterFor(sql, ctx, ws, campaignId, deps.siteUrl, waId);
+}
+
+/** The best seller or buyer not yet offered, alternating sellers and buyers. */
+async function nextSuggestion(sql: Sql, ctx: RequestContext, ws: string, suggested: readonly string[]): Promise<(SuggestionFacts & { id: string }) | null> {
+  const [sellers, buyers] = await Promise.all([listOpportunities(sql, ctx, ws, { limit: 20 }), listBuyers(sql, ctx, ws, { limit: 20 })]);
+  const open = (status: string, id: string) => (status === 'new' || status === 'saved') && !suggested.includes(id);
+  const s = sellers
+    .filter((o) => open(o.status, o.id))
+    .map((o) => ({ kind: 'seller' as const, id: o.id, label: `${o.address || 'Parcel'}, ${o.zip} (${o.propertyType.toLowerCase()})`, reason: o.reasons.slice(0, 2).map((r) => r.text).join(' ') }));
+  const b = buyers
+    .filter((x) => open(x.status, x.id))
+    .map((x) => ({ kind: 'buyer' as const, id: x.id, label: x.profile.name, reason: `${x.reasons.slice(0, 2).map((r) => r.text).join(' ')} Past purchases, not a sign it is buying now.` }));
+  const offered = suggested.length;
+  const order = offered % 2 === 0 ? [s, b] : [b, s];
+  return order[0]?.[0] ?? order[1]?.[0] ?? null;
+}
+
+async function opportunityOfCampaign(sql: Sql, ctx: RequestContext, ws: string, campaignId: string, label: string): Promise<{ id: string; label: string } | null> {
   const c = await getCampaign(sql, ctx, ws, campaignId);
-  return letterReply(
+  return c.opportunityId ? { id: c.opportunityId, label } : null;
+}
+
+async function letterFor(sql: Sql, ctx: RequestContext, ws: string, campaignId: string, site: string, waId: string): Promise<Reply> {
+  const c = await getCampaign(sql, ctx, ws, campaignId);
+  await saveSession(sql, waId, { focus: { kind: 'campaign', id: c.id, label: c.title, opportunityId: c.opportunityId } });
+  const r = letterReply(
     {
       id: c.id,
       title: c.title,
@@ -582,5 +744,5 @@ async function letterFor(sql: Sql, ctx: RequestContext, ws: string, campaignId: 
     },
     site,
   );
+  return c.status === 'review' ? { ...r, text: `${r.text}\nReply *shorter*, *warmer* or "edit: …" to change it.` } : r;
 }
-

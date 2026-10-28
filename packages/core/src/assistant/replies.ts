@@ -27,7 +27,8 @@ export function helpReply(siteUrl: string): Reply {
   return {
     text: [
       '*GenCut on WhatsApp*',
-      'Send:',
+      'Talk to me normally, or send:',
+      '• *next*: the one lead most worth a letter now',
       '• *new*: what is new today',
       '• *sellers*: your best seller opportunities',
       '• *buyers*: your best investor buyers',
@@ -35,6 +36,8 @@ export function helpReply(siteUrl: string): Reply {
       '• a number, like *2*: details of item 2 in the last list',
       '• *draft 2*: write a letter for item 2 (nothing is sent)',
       '• *save 2* / *dismiss 2*',
+      '• *shorter*, *warmer* or "edit: …": change the letter on screen',
+      '• "2 replied", "meeting set": record what happened',
       '• *stop*: unlink this number',
       '',
       `Everything else is in the app: ${siteUrl}`,
@@ -247,3 +250,54 @@ export const noListReply: Reply = { text: 'Which one? Send *sellers*, *buyers* o
 export const unknownReply = (siteUrl: string): Reply => ({
   text: `I can show your opportunities, buyers and campaigns, and draft letters. Sending, approving and mailing are done in the app, after review: ${siteUrl}\nSend *help* for the list.`,
 });
+
+export interface SuggestionFacts {
+  readonly kind: 'seller' | 'buyer';
+  readonly label: string;
+  readonly reason: string;
+}
+
+/** One item worth acting on, offered as a yes/no question (the way a colleague would). */
+export function suggestionReply(s: SuggestionFacts): Reply {
+  const what = s.kind === 'seller' ? 'an introduction letter to the owner' : 'an introduction letter to this investor';
+  return {
+    text: `*Worth a letter:* ${s.label}\n${clip(s.reason, 220)}\n\nShould I draft ${what}? Nothing is sent.`,
+    buttons: [
+      { title: 'Yes, draft it', command: 'yes' },
+      { title: 'No', command: 'no' },
+      { title: 'Show details', command: 'details' },
+    ],
+  };
+}
+
+export const noSuggestionReply: Reply = {
+  text: 'Nothing new worth a letter right now: everything at the top is already saved, dismissed or in a campaign. Send *sellers* or *buyers* to look through the lists.',
+};
+
+export const skippedReply: Reply = { text: 'OK, skipped. Send *next* when you want another one.' };
+export const nothingPendingReply: Reply = { text: 'There is no open question. Send *next* for a suggestion, or *help*.' };
+export const noLetterReply: Reply = { text: 'Which letter? Send *campaigns* and pick one first, then tell me how to change it.' };
+export const noItemReply: Reply = { text: 'Which one? Send *sellers*, *buyers* or *campaigns*, then tell me what happened with a number, like "2 replied".' };
+
+const OUTCOME_WORDS: Readonly<Record<string, string>> = {
+  contacted: 'contacted',
+  no_response: 'no response yet',
+  responded: 'they replied',
+  not_interested: 'not interested',
+  qualified_conversation: 'a qualified conversation',
+  appointment: 'a meeting set',
+  offer: 'an offer made',
+  listing: 'a listing signed',
+  closed: 'closed',
+  wrong_address: 'wrong address',
+};
+
+export function outcomeReply(label: string, outcome: string): Reply {
+  return { text: `Noted for ${clip(label, 80)}: ${OUTCOME_WORDS[outcome] ?? outcome}. GenCut uses this to rank future leads.` };
+}
+
+export function letterRevisedReply(title: string, greeting: string, paragraphs: readonly string[], campaignId: string, siteUrl: string): Reply {
+  return {
+    text: [`*Revised:* ${clip(title, 80)}`, '', clip([greeting, ...paragraphs].join('\n\n'), 2400), '', 'It passed the same checks. Nothing has been sent.', `Review in the app: ${siteUrl}/campaigns/${campaignId}`].join('\n'),
+  };
+}

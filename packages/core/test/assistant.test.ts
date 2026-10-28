@@ -87,3 +87,45 @@ describe('Assistant replies', () => {
     assert.match(b.text, /not a sign they are buying now/);
   });
 });
+
+describe('Assistant conversation', () => {
+  it('parses yes/no, next, details, outcomes and letter edits', async () => {
+    const { parseCommand: p } = await import('../src/index.ts');
+    assert.deepEqual(p('Yes'), { kind: 'confirm', yes: true });
+    assert.deepEqual(p('not now'), { kind: 'confirm', yes: false });
+    assert.deepEqual(p("what's next?"), { kind: 'suggest' });
+    assert.deepEqual(p('details'), { kind: 'show', n: null });
+    assert.deepEqual(p('outcome 2 responded'), { kind: 'outcome', n: 2, outcome: 'responded' });
+    assert.deepEqual(p('outcome qualified conversation'), { kind: 'outcome', n: null, outcome: 'qualified_conversation' });
+    assert.deepEqual(p('outcome 2 sold it'), { kind: 'unknown' }, 'only known outcome codes');
+    assert.deepEqual(p('Edit: mention I grew up in Aventura'), { kind: 'edit', instruction: 'mention I grew up in Aventura' });
+    assert.deepEqual(p('make it shorter'), { kind: 'edit', instruction: 'make it shorter' });
+  });
+
+  it('takes the model\'s action only from the fixed list, and only for listed items', async () => {
+    const { fromChat } = await import('../src/index.ts');
+    assert.deepEqual(fromChat({ reply: 'Here are your buyers.', action: 'buyers' }, listed), { reply: 'Here are your buyers.', command: { kind: 'list', target: 'buyers' } });
+    assert.deepEqual(fromChat({ reply: 'Noted.', action: 'outcome 2 no_response' }, listed).command, { kind: 'outcome', n: 2, outcome: 'no_response' });
+    assert.deepEqual(fromChat({ reply: 'Sure.', action: 'edit: warmer, and shorter' }, listed).command, { kind: 'edit', instruction: 'warmer, and shorter' });
+    assert.deepEqual(fromChat({ reply: 'Which one?', action: 'none' }, listed).command, { kind: 'unknown' });
+    assert.deepEqual(fromChat({ reply: 'x', action: 'draft 9' }, listed).command, { kind: 'unknown' }, 'not in the list');
+    assert.deepEqual(fromChat({ reply: 'x', action: 'send 2' }, listed).command, { kind: 'unknown' });
+    assert.deepEqual(fromChat({ reply: 'x', action: 'link 123456' }, listed).command, { kind: 'unknown' });
+    assert.deepEqual(fromChat('buyers', listed), { reply: null, command: { kind: 'unknown' } });
+  });
+
+  it('never lets a reply claim something was sent, or state a figure it was not given', async () => {
+    const { checkChatReply, chatPrompt } = await import('../src/index.ts');
+    const context = 'You have 42 seller opportunities in 33180; median price $512,000.';
+    assert.equal(checkChatReply('You have 42 sellers in 33180.', context), 'You have 42 sellers in 33180.');
+    assert.equal(checkChatReply('I sent the letter to the owner.', context), null);
+    assert.equal(checkChatReply("I've mailed it.", context), null);
+    assert.equal(checkChatReply('The letter has been approved.', context), null);
+    assert.equal(checkChatReply('Homes there sell for $640,000.', context), null, 'an invented price');
+    assert.equal(checkChatReply('Two of them look strong.', context), 'Two of them look strong.');
+    assert.equal(checkChatReply('Item 3 looks strong.', context), 'Item 3 looks strong.', 'small counts are fine');
+    const p = chatPrompt('who should I write to first?', [{ from: 'agent', text: 'hi' }, { from: 'gencut', text: 'Hi Ana.' }], { facts: ['Agent: Ana Test, Miami-Dade, ZIP 33180'], listed, focus: null, pendingQuestion: null });
+    assert.match(p.user, /Agent: hi\nGenCut: Hi Ana\./);
+    assert.match(p.system, /never say you did/);
+  });
+});

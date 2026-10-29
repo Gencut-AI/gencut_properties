@@ -261,3 +261,11 @@ can give exact purchase dates.
 **Guards:** no sign-in; a hidden honeypot field; at most 5 submissions per visitor per day (a one-way hash of network address and day, never the address itself) and 200 per page per day; every submission audited. The page promises only a personal reply from the agent.
 
 **Next (same day):** connect an Instagram professional account through Meta's official Instagram API so comments and DMs become leads and get a DM reply linking to this page. Unofficial scraping of groups or other accounts stays ruled out.
+
+## D-024 · 2026-10-29 · Instagram comments as leads (pilot, one account)
+
+**Decision (Paul, 29 Oct):** connect an Instagram professional account through Meta's official Instagram API with Instagram Login. GenCut checks the account's 10 most recent posts for comments containing a keyword (default VALUE, SEND, INFO, HOME, LINK; `INSTAGRAM_KEYWORDS`), keeps only those (migration 0015, `instagram_comments`), and lists them on the Leads tab. The agent clicks **Send link by DM** to send one private reply with the lead-page link (`?src=instagram`); the click is the approval, every reply is audited, and Meta's rules hold (one private reply per comment, within 7 days). The person becomes a full lead, with consent, when they fill in the lead page (D-023).
+
+**Why polling and one account:** real-time comment webhooks need Advanced Access, and other accounts need App Review and business verification. Until then the pilot uses a token generated in the App Dashboard for one account (`INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_WORKSPACE_ID`), and the check runs when the Leads tab opens (at most every 2 minutes, never holding the page more than 6 seconds) or on **Check Instagram now**.
+
+**Next:** "Connect Instagram" through Instagram Business Login per agent, webhooks instead of checks, DMs as well as comments, and token refresh (dashboard tokens last 60 days) once Meta approves the app.

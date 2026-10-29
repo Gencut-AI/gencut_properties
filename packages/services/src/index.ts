@@ -18,3 +18,4 @@ export * from './matching.ts';
 export * from './email-outreach.ts';
 export * from './leads.ts';
 export * from './lead-pages.ts';
+export * from './instagram.ts';

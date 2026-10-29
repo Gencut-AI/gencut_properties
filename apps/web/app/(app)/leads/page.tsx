@@ -5,7 +5,10 @@ import {
   getBusinessProfile,
   getBuyerDiscoveryStatus,
   getDiscoveryStatus,
+  getInstagramView,
   getLeadPage,
+  instagramCheckDue,
+  syncInstagramComments,
   getLeadsOverview,
   listInboundLeads,
   type LeadOutreach,
@@ -24,11 +27,12 @@ import { draftingEnabled } from '../../../lib/background.ts';
 import { db } from '../../../lib/db.ts';
 import { formatCount } from '../../../lib/discovery-copy.ts';
 import { emailConfig } from '../../../lib/email.ts';
+import { instagramClient, instagramConfig } from '../../../lib/instagram.ts';
 import { requireSession } from '../../../lib/session.ts';
 import { signInRedirectOrigin } from '../../../lib/site-url.ts';
 import { startCampaignAction } from '../_campaign/actions.ts';
 import { AutoRefresh } from '../_discovery/auto-refresh.tsx';
-import { createLeadPageAction, setInboundStatusAction } from './actions.ts';
+import { checkInstagramAction, createLeadPageAction, dismissInstagramAction, sendInstagramLinkAction, setInboundStatusAction } from './actions.ts';
 import { CopyLink } from './copy-link.tsx';
 import { CountUp } from './count-up.tsx';
 
@@ -112,13 +116,18 @@ function Stages({ i }: { i: number }) {
 /** Rise-in order for an item. */
 const at = (i: number) => ({ '--i': i }) as React.CSSProperties;
 
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ lead_page_error?: string }> }) {
-  const { lead_page_error: leadPageError } = await searchParams;
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ lead_page_error?: string; ig_error?: string }> }) {
+  const { lead_page_error: leadPageError, ig_error: igError } = await searchParams;
   const { ctx, workspace } = await requireSession();
   const ws = workspace.workspaceId;
   const profile = await getBusinessProfile(db(), ctx, ws);
   if (!profile) redirect('/onboarding');
-  const [sellers, buyers, discovery, buyerStatus, overview, leadPage, inbound] = await Promise.all([
+  // Instagram pilot: check for new keyword comments when the tab opens, at most every two minutes, never holding the page long.
+  const ig = instagramConfig();
+  if (ig && ig.workspaceId === ws && (await instagramCheckDue(db(), ws))) {
+    await Promise.race([syncInstagramComments(db(), ig, instagramClient(ig)).catch(() => null), new Promise((r) => setTimeout(r, 6000))]);
+  }
+  const [sellers, buyers, discovery, buyerStatus, overview, leadPage, inbound, insta] = await Promise.all([
     listOpportunities(db(), ctx, ws, { limit: 60 }),
     listBuyers(db(), ctx, ws, { limit: 60 }),
     getDiscoveryStatus(db(), ctx, ws),
@@ -126,6 +135,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     getLeadsOverview(db(), ctx, ws),
     getLeadPage(db(), ctx, ws),
     listInboundLeads(db(), ctx, ws, 10),
+    getInstagramView(db(), ctx, ws, ig),
   ]);
   const h = await headers();
   const origin = signInRedirectOrigin(process.env.GENCUT_SITE_URL, h.get('x-forwarded-host') ?? h.get('host'), h.get('x-forwarded-proto')) ?? '';
@@ -165,7 +175,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     { name: `${county} property roll`, what: 'Every home, its owner of record and tax mailing address (Florida Dept. of Revenue).', state: 'Connected' },
     { name: 'Recorded sales', what: 'Deeds on the roll, used to find investors who keep buying.', state: 'Connected' },
     leadPage
-      ? { name: 'Social media', what: `Your lead page, in your Instagram and Facebook bios, posts and ads. ${inbound.total} lead${inbound.total === 1 ? '' : 's'} so far.`, state: 'Connected' }
+      ? {
+          name: 'Social media',
+          what: `${insta.connected && insta.username ? `Instagram @${insta.username} comments, and your` : 'Your'} lead page in bios, posts and ads. ${inbound.total} lead${inbound.total === 1 ? '' : 's'} so far.`,
+          state: 'Connected',
+        }
       : { name: 'Social media', what: 'Your lead page for Instagram and Facebook bios, posts and ads. Set it up below.', state: 'Not set up' },
   ];
 
@@ -431,6 +445,88 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                 ))}
               </ul>
             )}
+          </>
+        )}
+      </section>
+
+      <section id="instagram" aria-labelledby="instagram-h" className="flex flex-col gap-4 rounded-panel border border-glass-deep bg-white p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="instagram-h" className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-ink-soft">
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17.5" cy="6.5" r="0.8" fill="currentColor" />
+            </svg>
+            Instagram comments
+          </h2>
+          {insta.connected && (
+            <form action={checkInstagramAction}>
+              <button type="submit" className="min-h-11 rounded-full border border-glass-deep px-4 text-sm font-semibold hover:border-bay">
+                Check Instagram now
+              </button>
+            </form>
+          )}
+        </div>
+        {!insta.connected ? (
+          <p className="text-ink-soft">Instagram is not connected to this account yet.</p>
+        ) : (
+          <>
+            <p className="text-sm text-ink-soft">
+              {insta.username ? (
+                <>
+                  Connected as <span className="font-semibold text-ink">@{insta.username}</span>.{' '}
+                </>
+              ) : null}
+              Ask people to comment <span className="font-semibold text-ink">{insta.keywords.slice(0, 3).join(', ')}</span> on your posts, and they show up here.
+              {insta.lastCheckedAt ? ` Last checked ${ago(insta.lastCheckedAt)}.` : ''}
+            </p>
+            {(igError || insta.lastError) && (
+              <p role="alert" className="rounded-xl bg-[#fdebef] p-3 text-sm text-[#7d1a33]">
+                {igError ?? insta.lastError}
+              </p>
+            )}
+            {insta.comments.length === 0 ? (
+              <p className="text-ink-soft">No keyword comments yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {insta.comments.map((c, i) => (
+                  <li key={c.id} className="rise grid gap-3 rounded-xl border border-glass bg-paper p-3 sm:grid-cols-[minmax(0,1fr)_auto]" style={at(i + 16)}>
+                    <div className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">@{c.username}</span>
+                        <span className="rounded-full bg-[#fde4ea] px-2.5 py-0.5 text-xs font-bold text-[#8a1d3a]">{c.keyword}</span>
+                        {c.replyState === 'sent' && <span className="rounded-full bg-glass px-2.5 py-0.5 text-xs font-bold text-bay-deep">Link sent by DM</span>}
+                        <span className="text-xs text-ink-soft">{ago(c.commentedAt)}</span>
+                      </span>
+                      <span className="mt-0.5 block truncate text-sm text-ink-soft">“{c.text}”</span>
+                      {c.replyState === 'failed' && c.replyError && <span className="mt-1 block text-sm text-[#7d1a33]">{c.replyError}</span>}
+                      {c.permalink && (
+                        <a href={c.permalink} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm font-medium text-bay-deep underline-offset-4 hover:underline">
+                          See the post
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {c.canReply && (
+                        <form action={sendInstagramLinkAction}>
+                          <input type="hidden" name="commentId" value={c.id} />
+                          <button type="submit" className="min-h-11 rounded-full bg-ink px-4 text-sm font-semibold text-paper hover:bg-bay-deep">
+                            {c.replyState === 'failed' ? 'Try the DM again' : 'Send link by DM'}
+                          </button>
+                        </form>
+                      )}
+                      <form action={dismissInstagramAction}>
+                        <input type="hidden" name="commentId" value={c.id} />
+                        <button type="submit" className="min-h-11 rounded-full border border-glass-deep px-4 text-sm font-semibold hover:bg-glass">
+                          Dismiss
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-ink-soft">One private reply per comment, within 7 days, with your lead-page link. You approve each one.</p>
           </>
         )}
       </section>

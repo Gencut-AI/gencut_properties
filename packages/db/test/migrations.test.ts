@@ -43,6 +43,8 @@ describe('migrations', () => {
       'consents',
       'county_zip_counts',
       'data_sources',
+      'inbound_leads',
+      'lead_pages',
       'media_assets',
       'memberships',
       'model_runs',

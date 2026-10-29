@@ -253,3 +253,11 @@ can give exact purchase dates.
 **Decision (Paul, 29 Oct):** a Leads tab presents discovery as one workflow of six agents (Finder, Researcher, Signal Hunter, Enricher, Qualifier, Prioritizer), with the run's real totals (homes on the county roll, homes in focus, sellers qualified, investors kept, skipped), a feed of the latest leads with their outreach state (shortlisted, saved, in campaign, emailed), a ranked shortlist with one-click drafting and the number of investors that fit each home (match-v1), and the lead sources. Read-only over existing records (`getLeadsOverview`); no new data or scoring.
 
 **Honesty rules on this page:** the Enricher is marked "Next" (GenCut has mailing addresses only; emails come from the agent); social media is listed as a source only with its true status ("Not connected yet" until a social source actually delivers leads). Animations respect reduced motion.
+
+## D-023 · 2026-10-29 · Social leads, step 1: the agent's lead page
+
+**Decision (Paul, 29 Oct):** leads from social media start with a public lead page per agent (`/l/<slug>`), the link that goes in an Instagram or Facebook bio, a post, an ad, or an automatic Instagram DM reply. Visitors say what they want (selling, buying, investing, home value), leave a name and email (phone optional), and tick a consent box whose exact text is stored as a `consents` row (email, `email_marketing`, disclosure shown). The lead (`inbound_leads`, migration 0014) appears at once on the Leads tab with its source, taken from the link's `?src=` (one copy button per network) or the referring site.
+
+**Guards:** no sign-in; a hidden honeypot field; at most 5 submissions per visitor per day (a one-way hash of network address and day, never the address itself) and 200 per page per day; every submission audited. The page promises only a personal reply from the agent.
+
+**Next (same day):** connect an Instagram professional account through Meta's official Instagram API so comments and DMs become leads and get a DM reply linking to this page. Unofficial scraping of groups or other accounts stays ruled out.

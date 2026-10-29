@@ -73,3 +73,32 @@ body {
 .rec-dot {
   animation: rec 1.6s ease-in-out infinite;
 }
+
+/* Leads tab: cards rise in one after another (--i is the item's position), stage bars fill. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.stage-fill {
+  transform-origin: left;
+  animation: fill 0.45s ease-out both;
+  animation-delay: calc(var(--i, 0) * 60ms + var(--s, 0) * 90ms + 200ms);
+}

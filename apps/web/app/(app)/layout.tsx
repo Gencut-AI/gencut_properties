@@ -8,11 +8,12 @@ export const dynamic = 'force-dynamic';
 // Only screens that exist are linked. Pipeline joins the navigation in the
 // milestone that builds it.
 const NAV = [
-  { href: '/home', label: 'Home' },
-  { href: '/opportunities', label: 'Opportunities' },
-  { href: '/buyers', label: 'Buyers' },
-  { href: '/campaigns', label: 'Campaigns' },
-  { href: '/profile', label: 'Profile' },
+  { href: '/home', label: 'Home', short: 'Home' },
+  { href: '/leads', label: 'Leads', short: 'Leads' },
+  { href: '/opportunities', label: 'Opportunities', short: 'Sellers' },
+  { href: '/buyers', label: 'Buyers', short: 'Buyers' },
+  { href: '/campaigns', label: 'Campaigns', short: 'Campaigns' },
+  { href: '/profile', label: 'Profile', short: 'Profile' },
 ] as const;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -47,11 +48,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t border-glass-deep bg-paper/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
         {NAV.map((n) => (
-          <Link key={n.href} href={n.href} className="flex h-16 items-center justify-center text-[0.8rem] font-medium">
-            {n.label}
+          <Link key={n.href} href={n.href} className="flex h-16 items-center justify-center text-[0.75rem] font-medium">
+            {n.short}
           </Link>
         ))}
       </nav>

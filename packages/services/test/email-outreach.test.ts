@@ -15,6 +15,7 @@ import {
   ensureWorkspace,
   generateCampaignDraft,
   getEmailOutreach,
+  getLeadsOverview,
   listOpportunities,
   ModelRouter,
   prepareEmailOutreach,
@@ -28,6 +29,7 @@ import {
   type Sql,
   startCampaignDraft,
   storeParcels,
+  storeZipIndex,
   unsubscribeByToken,
   unsubscribeToken,
   updateCampaignLetter,
@@ -294,6 +296,27 @@ describe('email outreach', () => {
       prepareEmailOutreach(sql, u, workspaceId, campaignId, { to: 'tester@example.com', subject: 'A note from Ana' }, config()),
       /unsubscribed/,
     );
+  });
+
+  it('the Leads overview counts the county, campaigns and emails, and marks emailed leads', async () => {
+    const { u, workspaceId, campaignId } = await setup('33406');
+    const [{ opportunity_id: oppId } = { opportunity_id: '' }] = await sql<{ opportunity_id: string }[]>`SELECT opportunity_id FROM campaigns WHERE id = ${campaignId}`;
+    const before = await getLeadsOverview(sql, u, workspaceId);
+    assert.equal(before.campaigns, 1);
+    assert.equal(before.emailsSent, 0);
+    assert.equal(before.outreach[oppId], 'campaign');
+
+    await storeZipIndex(sql, '23', 'Dade 23 Preliminary NAL 2026.zip', roll.fileDate, new Map([['33406', 1200], ['33407', 800]]));
+    await enableEmailOutreach(sql, u, workspaceId);
+    const { actionId } = await prepareEmailOutreach(sql, u, workspaceId, campaignId, { to: 'tester@example.com', subject: 'A note from Ana' }, config());
+    await approveAndSendEmail(sql, u, workspaceId, actionId, config(), new RecordedEmailTransport());
+
+    const after = await getLeadsOverview(sql, u, workspaceId);
+    assert.equal(after.outreach[oppId], 'emailed');
+    assert.equal(after.emailsSent, 1);
+    assert.ok((after.countyHomes ?? 0) >= 2000);
+    assert.ok((after.countyZips ?? 0) >= 2);
+    await assert.rejects(getLeadsOverview(sql, user(), workspaceId), (e: ServiceError) => e.code === 'forbidden');
   });
 
   it('reads configuration from the environment and sends through Resend with the key only in a header', async () => {

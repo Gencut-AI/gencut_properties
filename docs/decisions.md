@@ -253,3 +253,19 @@ can give exact purchase dates.
 **Decision (Paul, 29 Oct):** a Leads tab presents discovery as one workflow of six agents (Finder, Researcher, Signal Hunter, Enricher, Qualifier, Prioritizer), with the run's real totals (homes on the county roll, homes in focus, sellers qualified, investors kept, skipped), a feed of the latest leads with their outreach state (shortlisted, saved, in campaign, emailed), a ranked shortlist with one-click drafting and the number of investors that fit each home (match-v1), and the lead sources. Read-only over existing records (`getLeadsOverview`); no new data or scoring.
 
 **Honesty rules on this page:** the Enricher is marked "Next" (GenCut has mailing addresses only; emails come from the agent); social media is listed as a source only with its true status ("Not connected yet" until a social source actually delivers leads). Animations respect reduced motion.
+
+## D-023 · 2026-10-29 · Social leads, step 1: the agent's lead page
+
+**Decision (Paul, 29 Oct):** leads from social media start with a public lead page per agent (`/l/<slug>`), the link that goes in an Instagram or Facebook bio, a post, an ad, or an automatic Instagram DM reply. Visitors say what they want (selling, buying, investing, home value), leave a name and email (phone optional), and tick a consent box whose exact text is stored as a `consents` row (email, `email_marketing`, disclosure shown). The lead (`inbound_leads`, migration 0014) appears at once on the Leads tab with its source, taken from the link's `?src=` (one copy button per network) or the referring site.
+
+**Guards:** no sign-in; a hidden honeypot field; at most 5 submissions per visitor per day (a one-way hash of network address and day, never the address itself) and 200 per page per day; every submission audited. The page promises only a personal reply from the agent.
+
+**Next (same day):** connect an Instagram professional account through Meta's official Instagram API so comments and DMs become leads and get a DM reply linking to this page. Unofficial scraping of groups or other accounts stays ruled out.
+
+## D-024 · 2026-10-29 · Instagram comments as leads (pilot, one account)
+
+**Decision (Paul, 29 Oct):** connect an Instagram professional account through Meta's official Instagram API with Instagram Login. GenCut checks the account's 10 most recent posts for comments containing a keyword (default VALUE, SEND, INFO, HOME, LINK; `INSTAGRAM_KEYWORDS`), keeps only those (migration 0015, `instagram_comments`), and lists them on the Leads tab. The agent clicks **Send link by DM** to send one private reply with the lead-page link (`?src=instagram`); the click is the approval, every reply is audited, and Meta's rules hold (one private reply per comment, within 7 days). The person becomes a full lead, with consent, when they fill in the lead page (D-023).
+
+**Why polling and one account:** real-time comment webhooks need Advanced Access, and other accounts need App Review and business verification. Until then the pilot uses a token generated in the App Dashboard for one account (`INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_WORKSPACE_ID`), and the check runs when the Leads tab opens (at most every 2 minutes, never holding the page more than 6 seconds) or on **Check Instagram now**.
+
+**Next:** "Connect Instagram" through Instagram Business Login per agent, webhooks instead of checks, DMs as well as comments, and token refresh (dashboard tokens last 60 days) once Meta approves the app.

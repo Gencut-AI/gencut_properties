@@ -233,3 +233,17 @@ can give exact purchase dates.
 **Decision:** a buyer matches a seller opportunity when its verified purchases include the home's ZIP code and its kind of home (`match-v1`: ZIP 40–50, kind 25, roll market value inside 80–120% of its single-home prices 15, latest purchase within 12 months of the roll 10). The seller page lists the five best-fitting investors; the buyer page lists the five best-fitting seller opportunities. Both say a match is a fit with past purchases, not a sign of buying, and not permission to contact anyone; only the agent sees them. Matches are computed from the workspace's own records when the page loads, so they are never stale.
 
 **Not yet:** storing matches with a status ("useful / not useful") to measure them, and offering matches over WhatsApp. Both come next if agents use them.
+
+## D-021 · 2026-10-29 · Outreach email, test inboxes only until counsel review
+
+**Decision (Paul, 29 Oct):** campaign letters can be sent as email through Resend. Until counsel reviews live outreach, deploys run in `test_only` mode: messages really send, but only to the team's test inboxes (`GENCUT_EMAIL_TEST_INBOXES`). `live` is a configuration change, made only after review.
+
+**How a message goes out:**
+1. The workspace owner turns on contact by email once (`contact` permission, channel `email`). Finding opportunities and writing letters never contacts anyone.
+2. The agent enters the recipient and subject; GenCut builds the email from the reviewed letter (`email-v1`) with the advertisement notice, the agent's license and office address, and an unsubscribe link, and saves it as a READY outreach action.
+3. The agent approves that exact message (READY → APPROVED, with who and when).
+4. The executor runs the compliance gate at send time (permission, suppression list, brokerage name, postal address, unsubscribe link, ad notice, sending mode) and only then sends (APPROVED → EXECUTING → COMPLETED, or FAILED with the reasons). Each step is in the audit log.
+
+**Details:** replies go to the agent's sign-in email (Reply-To); the From name is the agent and brokerage on GenCut's verified sending domain. Unsubscribe links are signed per message, work without sign-in, and add the address to the workspace's suppression list; a one-click `List-Unsubscribe` header is included (RFC 8058). The provider gets the action id as an idempotency key, so a retried send is not delivered twice. An email prepared before the letter was edited cannot be approved; it must be prepared again. A campaign does not email the same address twice. Prospects from public records have no email addresses; the agent supplies one.
+
+**Not yet:** delivery, bounce and open tracking (Resend webhooks), follow-up emails on the campaign's schedule, sending to a buyer's contact found by GenCut. The mailed letter is unchanged and is never sent by GenCut.

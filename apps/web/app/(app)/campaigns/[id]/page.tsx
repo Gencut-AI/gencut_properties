@@ -1,12 +1,14 @@
-import { getBusinessProfile, getCampaign, getCampaignMedia, isServiceError } from '@gencut/services';
+import { getBusinessProfile, getCampaign, getCampaignMedia, getEmailOutreach, isServiceError } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { mediaEnabled } from '../../../../lib/background.ts';
 import { db } from '../../../../lib/db.ts';
+import { emailConfig } from '../../../../lib/email.ts';
 import { requireSession } from '../../../../lib/session.ts';
 import { retryCampaignAction } from '../../_campaign/actions.ts';
 import { FilmCrew } from '../../_campaign/film-crew.tsx';
+import { EmailSend } from '../../_campaign/email-send.tsx';
 import { CAMPAIGN_STATUS_LABEL, CHANNEL_LABEL } from '../../_campaign/labels.ts';
 import { LetterEditor } from '../../_campaign/letter-editor.tsx';
 import { AutoRefresh } from '../../_discovery/auto-refresh.tsx';
@@ -30,10 +32,12 @@ export default async function CampaignPage({
     throw e;
   });
   const d = c.draft;
-  const [media, profile] = await Promise.all([
+  const [media, profile, email] = await Promise.all([
     getCampaignMedia(db(), ctx, workspace.workspaceId, c.id),
     getBusinessProfile(db(), ctx, workspace.workspaceId),
+    getEmailOutreach(db(), ctx, workspace.workspaceId, c.id, emailConfig()),
   ]);
+  const emailed = email.sentTo;
   // A draft that has been "writing" for over two minutes most likely never started.
   const stuck = c.status === 'generating' && Date.now() - c.updatedAt.getTime() > 2 * 60_000;
 
@@ -49,11 +53,13 @@ export default async function CampaignPage({
       )}
       <header>
         <p className="text-sm font-medium text-ink-soft">
-          Direct-mail campaign · {CAMPAIGN_STATUS_LABEL[c.status]}
+          {emailed.length > 0 ? 'Email campaign' : 'Outreach campaign'} · {emailed.length > 0 ? 'Sent' : CAMPAIGN_STATUS_LABEL[c.status]}
         </p>
         <h1 className="display mt-1 text-3xl font-bold sm:text-4xl">{c.title}</h1>
         <p className="mt-3 rounded-xl bg-glass px-4 py-3 text-sm">
-          Nothing has been sent. Approving and mailing letters arrive in a later release, after compliance review.
+          {emailed.length > 0
+            ? `Emailed to ${emailed.join(', ')}. Nothing else has been sent; letters are never mailed by GenCut.`
+            : 'Nothing has been sent. You approve every message before it goes out.'}
         </p>
       </header>
 
@@ -158,6 +164,34 @@ export default async function CampaignPage({
               </details>
             )}
           </section>
+
+          {(c.status === 'review' || c.status === 'approved') && (
+            <EmailSend
+              campaignId={c.id}
+              audience={c.audience}
+              configured={email.configured}
+              mode={email.mode}
+              permitted={email.permitted}
+              missing={email.missing}
+              defaultSubject={email.defaultSubject}
+              sentTo={email.sentTo}
+              action={
+                email.action
+                  ? {
+                      id: email.action.id,
+                      state: email.action.state,
+                      to: email.action.to,
+                      subject: email.action.subject,
+                      text: email.action.text,
+                      fromName: email.action.fromName,
+                      stale: email.action.stale,
+                      sentAt: email.action.sentAt?.toISOString() ?? null,
+                      failureReason: email.action.failureReason,
+                    }
+                  : null
+              }
+            />
+          )}
 
           <section aria-labelledby="followup">
             <h2 id="followup" className="display text-xl font-semibold">

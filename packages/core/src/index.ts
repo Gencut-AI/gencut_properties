@@ -1,6 +1,7 @@
 export * from './result.ts';
 export * from './channels.ts';
 export * from './outreach/action-state.ts';
+export * from './outreach/email.ts';
 export * from './campaign/campaign-state.ts';
 export * from './permissions/permissions.ts';
 export * from './compliance/gate.ts';

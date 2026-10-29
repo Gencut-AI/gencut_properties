@@ -247,3 +247,9 @@ can give exact purchase dates.
 **Details:** replies go to the agent's sign-in email (Reply-To); the From name is the agent and brokerage on GenCut's verified sending domain. Unsubscribe links are signed per message, work without sign-in, and add the address to the workspace's suppression list; a one-click `List-Unsubscribe` header is included (RFC 8058). The provider gets the action id as an idempotency key, so a retried send is not delivered twice. An email prepared before the letter was edited cannot be approved; it must be prepared again. A campaign does not email the same address twice. Prospects from public records have no email addresses; the agent supplies one.
 
 **Not yet:** delivery, bounce and open tracking (Resend webhooks), follow-up emails on the campaign's schedule, sending to a buyer's contact found by GenCut. The mailed letter is unchanged and is never sent by GenCut.
+
+## D-022 · 2026-10-29 · Leads tab: the prospecting run as six agents
+
+**Decision (Paul, 29 Oct):** a Leads tab presents discovery as one workflow of six agents (Finder, Researcher, Signal Hunter, Enricher, Qualifier, Prioritizer), with the run's real totals (homes on the county roll, homes in focus, sellers qualified, investors kept, skipped), a feed of the latest leads with their outreach state (shortlisted, saved, in campaign, emailed), a ranked shortlist with one-click drafting and the number of investors that fit each home (match-v1), and the lead sources. Read-only over existing records (`getLeadsOverview`); no new data or scoring.
+
+**Honesty rules on this page:** the Enricher is marked "Next" (GenCut has mailing addresses only; emails come from the agent); social media is listed as a source only with its true status ("Not connected yet" until a social source actually delivers leads). Animations respect reduced motion.

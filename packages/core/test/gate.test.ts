@@ -162,6 +162,15 @@ describe('compliance gate — email (CAN-SPAM)', () => {
     const input = passing('email', { platform: { availableChannels: new Set(CHANNELS), liveEmailSending: false } });
     assert.deepEqual(failed(input), ['email_live_sending_enabled']);
   });
+
+  it('lets a test inbox through while live sending is off, and nothing else changes', () => {
+    const test = passing('email', { platform: { availableChannels: new Set(CHANNELS), liveEmailSending: false, emailTestRecipient: true } });
+    assert.deepEqual(failed(test), []);
+    const d = evaluateGate(test).checks.find((c) => c.code === 'email_live_sending_enabled');
+    assert.match(d?.detail ?? '', /test inbox/);
+    // A test inbox does not skip any other rule.
+    assert.deepEqual(failed({ ...test, suppressed: true }), ['not_suppressed']);
+  });
 });
 
 describe('compliance gate — calls (Fla. Stat. 501.059 and 501.616)', () => {

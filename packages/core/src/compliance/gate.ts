@@ -16,7 +16,7 @@ import { isPermitted, type WorkspacePermissions } from '../permissions/permissio
  *   docs/compliance.md. They are not legal advice and are reviewed by counsel
  *   before any live sending is enabled.
  */
-export const GATE_POLICY_VERSION = '2026-10-10';
+export const GATE_POLICY_VERSION = '2026-10-29';
 
 /** Why GenCut believes it may contact this person at all. */
 export const CONTACT_BASES = ['none', 'prior_relationship', 'express_request', 'responded_to_ad'] as const;
@@ -78,6 +78,12 @@ export interface GateInput {
   readonly platform: {
     readonly availableChannels: ReadonlySet<Channel>;
     readonly liveEmailSending: boolean;
+    /**
+     * The recipient is one of this deploy's test inboxes. While live sending is
+     * off, email may still go to these (the team's own addresses), so the whole
+     * flow can be exercised before counsel review.
+     */
+    readonly emailTestRecipient?: boolean;
   };
   /** Recipient is on this workspace's suppression list for this channel or all channels. */
   readonly suppressed: boolean;
@@ -233,10 +239,15 @@ function emailChecks(input: GateInput, add: Add): void {
         : 'Message identifies itself as an advertisement.'
       : 'Message must identify itself as an advertisement (CAN-SPAM) unless the recipient opted in.',
   );
+  const { liveEmailSending, emailTestRecipient } = input.platform;
   add(
     'email_live_sending_enabled',
-    input.platform.liveEmailSending,
-    input.platform.liveEmailSending ? 'Live email sending is enabled.' : 'Live email sending is switched off.',
+    liveEmailSending || emailTestRecipient === true,
+    liveEmailSending
+      ? 'Live email sending is enabled.'
+      : emailTestRecipient
+        ? 'Live sending is off; the recipient is a test inbox.'
+        : 'Live email sending is switched off, and the recipient is not a test inbox.',
   );
 }
 

@@ -327,7 +327,7 @@ export async function getCampaign(db: Db, ctx: RequestContext, workspaceId: stri
     FROM model_runs WHERE campaign_id = ${campaignId} AND purpose = 'campaign_draft'
   `;
   const [action] = await db<{ state: string }[]>`
-    SELECT state FROM outreach_actions WHERE campaign_id = ${campaignId} ORDER BY created_at DESC LIMIT 1
+    SELECT state FROM outreach_actions WHERE campaign_id = ${campaignId} AND channel = 'mail' ORDER BY created_at DESC LIMIT 1
   `;
   return {
     id: row.id,
@@ -417,7 +417,7 @@ export async function updateCampaignLetter(
     await tx`UPDATE campaigns SET draft = ${tx.json(draft as never)}, updated_at = now() WHERE id = ${campaignId}`;
     await tx`
       UPDATE outreach_actions SET content = ${tx.json({ kind: 'letter', letter: draft.letter } as never)}, updated_at = now()
-      WHERE campaign_id = ${campaignId} AND state = 'DRAFT'
+      WHERE campaign_id = ${campaignId} AND channel = 'mail' AND state = 'DRAFT'
     `;
     await recordAudit(tx, {
       workspaceId, actorType: 'user', actorId: ctx.userId, via: ctx.via, entityType: 'campaign', entityId: campaignId,

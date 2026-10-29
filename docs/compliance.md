@@ -1,8 +1,9 @@
 # Compliance rules implemented by the gate
 
-`packages/core/src/compliance/gate.ts`, policy version `2026-10-10`. These are engineering
+`packages/core/src/compliance/gate.ts`, policy version `2026-10-29`. These are engineering
 requirements taken from primary sources; they are **not legal advice**. Live sending stays
-off until counsel reviews the consent and outreach design.
+off until counsel reviews the consent and outreach design; until then email goes only to the
+team's test inboxes (`email_live_sending_enabled` passes for a test inbox, D-021).
 
 | Rule | Gate check(s) | Source |
 | --- | --- | --- |
@@ -37,7 +38,9 @@ shown, and again after every edit:
 - **Florida advertising:** the brokerage name is in the signature (Fla. Admin. Code 61J2-10.025).
 
 The writer is never given the owner's mailing location, the roll value, sale history or the
-signals that selected the owner. Nothing is sent: letters stay outreach actions in state DRAFT.
+signals that selected the owner. Mailed letters stay outreach actions in state DRAFT; GenCut
+never mails them. Email is sent only after the agent approves the exact message and the gate
+passes (D-021).
 
 Social posts (`packages/core/src/campaign/media.ts`) pass the same grounding, wording and
 fair-housing checks, and three more:

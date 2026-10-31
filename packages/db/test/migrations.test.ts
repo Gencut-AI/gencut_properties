@@ -44,6 +44,8 @@ describe('migrations', () => {
       'county_zip_counts',
       'data_sources',
       'inbound_leads',
+      'instagram_accounts',
+      'instagram_comments',
       'lead_pages',
       'media_assets',
       'memberships',

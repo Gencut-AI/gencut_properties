@@ -277,3 +277,9 @@ can give exact purchase dates.
 **Why:** publishing through Meta's APIs needs extra permissions and, for other agents' accounts, App Review; a share screen needs neither, works for every account and network, and keeps the agent the one who presses Post. Captions are fixed text, not model output, and always end with the agent, the brokerage and the license number (Florida advertising rule). Each link carries `?src=` so every lead shows its network (D-023). Prompts that route WhatsApp messages know the new command: `assistant-chat-v2`, `assistant-intent-v2`.
 
 **Next:** share the Film Crew's image or video with the caption (once `GEMINI_API_KEY` is set), sent as media on WhatsApp so it can be posted straight from the phone.
+
+## D-026 · 2026-11-05 · Public privacy policy and data-deletion page
+
+**Why now:** Meta delivers real WhatsApp messages (even from app admins) only to published apps, and publishing requires a Privacy Policy URL and data-deletion instructions. `/privacy` (public, no sign-in) states only what GenCut does today: the data kept for agents, public-record owners and buyers, lead-page visitors, Instagram commenters and email recipients; the processors (Supabase, Netlify, Anthropic, Resend, Meta); no selling, no advertising use; and how to have data deleted (`/privacy#delete`: email request within 30 days, STOP on WhatsApp, unsubscribe links). The lead page links to it.
+
+**Rule:** update the page with every new kind of data or processor. Counsel review before the commercial launch.

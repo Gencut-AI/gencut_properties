@@ -20,7 +20,7 @@ Architecture decisions: `docs/decisions.md`.
 | `packages/core` | Domain services shared by every interface: state machines, permissions, compliance gate, scoring, audit events. No I/O, no npm dependencies. |
 | `packages/db` | Postgres schema as SQL migrations (`migrations/NNNN_name.{up,down}.sql`), the `psql`-based runner, schema tests. |
 | `apps/web` | Next.js 16 PWA: pages, API routes (`/api/health`, the WhatsApp webhook `/api/whatsapp/webhook`). Background functions live in `apps/web/functions-src/` and are bundled at build time (never edit `netlify/functions/*.mjs`). Deployed to Netlify project `gencutv1` (`apps/web/netlify.toml`). |
-| `apps/worker` | Background jobs. Now: discovery (FL DOR roll import + scoring, `.github/workflows/discovery.yml`). Later: agent runs, rendering, approved outreach execution. |
+| `apps/worker` | Background jobs. Now: discovery (FL DOR roll import + scoring, `.github/workflows/discovery.yml`) and the Florida company register import for buyer companies (`.github/workflows/registry.yml`). Later: agent runs, rendering, approved outreach execution. |
 | `scripts/` | Repository lint and local tooling. |
 | `docs/` | Architecture, product, agents, data model, decisions, development. |
 
@@ -36,12 +36,14 @@ pnpm check                       # all three; must pass before every commit
 pnpm dev / pnpm build            # run or build the web app
 DATABASE_URL=... pnpm db:migrate # apply pending migrations
 DATABASE_URL=... pnpm --filter @gencut/worker discover   # one discovery pass (needs DOR portal access)
+DATABASE_URL=... pnpm --filter @gencut/worker registry   # company register import (needs lftp, unzip, the state's SFTP)
 ```
 
 The DOR portal (floridarevenue.com) is reachable from GitHub Actions but not from every
 development environment. Pull requests that touch discovery code run `Discovery / dry-run`:
-the real roll into a throwaway database, aggregates only. Test fixtures are synthetic; never
-commit rows from a real roll.
+the real roll into a throwaway database, aggregates only. Pull requests that touch the register
+reader run `Company register / dry-run` the same way. Test fixtures are synthetic; never
+commit rows from a real roll or the real register.
 
 TypeScript runs directly on Node ≥ 22.18 (type stripping). Therefore:
 - import local files with the `.ts` extension;

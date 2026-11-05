@@ -40,6 +40,8 @@ describe('migrations', () => {
       'audit_events',
       'business_profiles',
       'campaigns',
+      'company_imports',
+      'company_records',
       'consents',
       'county_zip_counts',
       'data_sources',

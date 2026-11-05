@@ -19,3 +19,4 @@ export * from './email-outreach.ts';
 export * from './leads.ts';
 export * from './lead-pages.ts';
 export * from './instagram.ts';
+export * from './company-registry.ts';

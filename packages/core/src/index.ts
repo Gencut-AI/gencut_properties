@@ -9,6 +9,7 @@ export * from './opportunity/scoring.ts';
 export * from './audit/audit.ts';
 export * from './sources/csv.ts';
 export * from './sources/fl-dor-nal.ts';
+export * from './sources/fl-sunbiz.ts';
 export * from './ai/model.ts';
 export * from './campaign/draft.ts';
 export * from './campaign/media.ts';

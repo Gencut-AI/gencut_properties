@@ -291,3 +291,15 @@ can give exact purchase dates.
 **Considered and rejected for now:** Miami-Dade's free weekly "Property Point View" open data (owner, last sale date and price, updated weekly). Measured on 5 Nov 2026 it held 139 sales of any kind since 1 Sept and 26 in October: deeds reach it with the same 2–3 month lag as the state roll GenCut already imports, and it lacks the state's qualification codes (family and related-company transfers). Truly faster data needs the Clerk's daily recorded documents ($110/month), deferred until the budget allows.
 
 **Also:** card lists use one explicit column on phones, so a long company name truncates instead of widening the page.
+
+## D-028 · 2026-11-05 · Who is behind a buying company: the Florida company register
+
+**Decision (Paul, 5 Nov):** show, on each investor buyer, its record in the Florida company register (Division of Corporations, "Sunbiz"): registered name, active or inactive, type, filing date and annual-report years, business and mailing addresses, registered agent, and the officers or managers on file (name and title; a company holding a role is marked as such). WhatsApp buyer details name up to three people on file.
+
+**Source and import:** the Department of State's quarterly corporate file (`doc/quarterly/cor/cordata.zip` on its public SFTP server, about 1.8 GB, 13 million fixed-width records; public login published on its Data Downloads page). `.github/workflows/registry.yml` checks weekly and downloads only when the file is new or a roll import finished since the last run (new buyers). The worker streams the archive and keeps only records whose name matches an owner on stored roll purchases (`company_records`, migration 0016; `company_imports` logs each file). Measured: 2 minutes to download, about 1.5 minutes to scan.
+
+**Matching:** by the same name key Buyer Radar groups owners by. An exact match wins (an active company first). The roll keeps 30 characters of an owner's name; when a name fills them and nothing matches exactly, a company whose registered name starts with it is used only if it is the only active one (or the only one), and the page says so. No match is shown as no match, never guessed.
+
+**Data kept:** officers' own addresses, the registered agent's address and the federal tax number are not read. The page says people on file are officers or managers as filed, not confirmation of who decides on purchases. The privacy policy lists the register as a source.
+
+**Next:** address buyer letters to the person on file ("Attn:"), and group companies that share a manager (one investor behind several LLCs).

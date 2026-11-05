@@ -68,7 +68,7 @@ export default async function LeadPage({ params, searchParams }: Params) {
             {page.agentName} · {page.brokerage}
             {page.licenseNumber ? ` · License ${page.licenseNumber}` : ''}
           </span>
-          <span>Your details go only to {firstName}. They are never sold.</span>
+          <span>Your details go only to {firstName}. They are never sold. <a href="/privacy" className="underline underline-offset-4">Privacy</a></span>
         </footer>
       </div>
     </main>

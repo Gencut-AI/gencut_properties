@@ -10,6 +10,7 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  buildShareKit,
   checkInboundLead,
   type InboundLeadInput,
   type InboundLeadStatus,
@@ -17,6 +18,7 @@ import {
   type LeadSource,
   leadConsentText,
   leadPageSlug,
+  type ShareKit,
 } from '@gencut/core';
 import { recordAudit } from './audit.ts';
 import type { RequestContext } from './context.ts';
@@ -38,6 +40,27 @@ export async function getLeadPage(db: Db, ctx: RequestContext, workspaceId: stri
   await requireMembershipFor(db, ctx, workspaceId);
   const [p] = await db<LeadPage[]>`SELECT slug, active FROM lead_pages WHERE workspace_id = ${workspaceId}`;
   return p ?? null;
+}
+
+/**
+ * The share kit for the workspace's lead page: a caption and a tracked link per
+ * network (D-025). Null until the page exists. Reads only.
+ */
+export async function getShareKit(db: Db, ctx: RequestContext, workspaceId: string, siteUrl: string): Promise<ShareKit | null> {
+  await requireMembershipFor(db, ctx, workspaceId);
+  const [p] = await db<{ slug: string; licensee_name: string | null; brokerage_name: string | null; license_number: string | null; focus: { zips?: string[] } | null }[]>`
+    SELECT l.slug, b.licensee_name, b.brokerage_name, b.license_number, b.focus
+    FROM lead_pages l JOIN business_profiles b ON b.workspace_id = l.workspace_id
+    WHERE l.workspace_id = ${workspaceId} AND l.active
+  `;
+  if (!p?.licensee_name || !p.brokerage_name) return null;
+  return buildShareKit({
+    agentName: p.licensee_name,
+    brokerage: p.brokerage_name,
+    licenseNumber: p.license_number,
+    zips: p.focus?.zips ?? [],
+    pageUrl: `${siteUrl.replace(/\/+$/, '')}/l/${p.slug}`,
+  });
 }
 
 /** Create the workspace's lead page (owner only). Returns the existing one if there is one. */

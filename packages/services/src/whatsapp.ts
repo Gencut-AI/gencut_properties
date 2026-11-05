@@ -47,6 +47,7 @@ import {
   parseCommand,
   sellerDetailReply,
   sellersReply,
+  shareReply,
   summaryReply,
   tooManyCodesReply,
   unknownReply,
@@ -54,6 +55,7 @@ import {
 } from '@gencut/core';
 import { ensureWorkspace, getBusinessProfile } from './accounts.ts';
 import { recordAudit } from './audit.ts';
+import { createLeadPage, getShareKit } from './lead-pages.ts';
 import { countBuyers, getBuyer, listBuyers } from './buyers.ts';
 import { generateCampaignDraft, getCampaign, listCampaigns, reviseCampaignLetter, startCampaignDraft } from './campaigns.ts';
 import type { RequestContext } from './context.ts';
@@ -483,6 +485,7 @@ async function handleMessage(sql: Sql, m: Claimed, deps: AssistantDeps): Promise
       // One message: the model's own words first when short, then what the action produced.
       const text = said && said.length <= 240 && r.text.length + said.length < MAX_REPLY_CHARS - 4 ? `${said}\n\n${r.text}` : r.text;
       await reply(sql, deps, m.wa_id, ctx.userId, { ...r, text });
+      if (r.then) await reply(sql, deps, m.wa_id, ctx.userId, r.then);
     } else if (command.kind === 'unknown') {
       await reply(sql, deps, m.wa_id, ctx.userId, said ? { text: said } : unknownReply(site));
     }
@@ -654,6 +657,25 @@ async function act(sql: Sql, ctx: RequestContext, ws: string, command: Command, 
       if (!target) return noItemReply;
       await recordOutcome(sql, ctx, ws, target.id, { outcome: command.outcome, occurredOn: new Date().toISOString().slice(0, 10) });
       return outcomeReply(target.label, command.outcome);
+    }
+    case 'share': {
+      // The lead page is the link being shared; an agent who has none gets one (owner only, audited).
+      let kit = await getShareKit(sql, ctx, ws, site);
+      if (!kit) {
+        await createLeadPage(sql, ctx, ws);
+        kit = await getShareKit(sql, ctx, ws, site);
+      }
+      if (!kit) return { text: `Your lead page could not be set up. Check your name and brokerage in Profile: ${site}/profile` };
+      const t = (n: string) => kit.targets.find((x) => x.network === n);
+      return shareReply(
+        {
+          whatsappCaption: t('whatsapp')?.caption ?? kit.caption,
+          instagramLink: t('instagram')?.link ?? '',
+          facebookLink: t('facebook')?.link ?? '',
+          tiktokLink: t('tiktok')?.link ?? '',
+        },
+        site,
+      );
     }
     case 'link':
     case 'unlink':

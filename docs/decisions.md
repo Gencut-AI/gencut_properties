@@ -269,3 +269,11 @@ can give exact purchase dates.
 **Why polling and one account:** real-time comment webhooks need Advanced Access, and other accounts need App Review and business verification. Until then the pilot uses a token generated in the App Dashboard for one account (`INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_WORKSPACE_ID`), and the check runs when the Leads tab opens (at most every 2 minutes, never holding the page more than 6 seconds) or on **Check Instagram now**.
 
 **Next:** "Connect Instagram" through Instagram Business Login per agent, webhooks instead of checks, DMs as well as comments, and token refresh (dashboard tokens last 60 days) once Meta approves the app.
+
+## D-025 · 2026-11-05 · Share anywhere: a share kit, not posting through Meta
+
+**Decision (Paul, 3 Nov):** keep Meta work to WhatsApp; let agents share their content on Instagram and other networks without GenCut publishing for them. The share kit (`share-v1`, `packages/core/src/social/share.ts`) turns the agent's lead page into a caption and a tagged link per network (Instagram, Facebook, WhatsApp, TikTok, LinkedIn, X, text message). On the Leads tab, each network button copies that network's caption and opens the network's own share screen (wa.me, Facebook and LinkedIn sharers, X intent, `sms:`); Instagram and TikTok have no share screen, so the agent pastes the caption and puts the link in the bio or a story link sticker. On a phone, **Share…** opens the phone's share menu. On WhatsApp, `share` (or "post to Instagram", "my link"…) sends how to post, then the caption alone so it can be forwarded as is; if the agent has no lead page yet, it is created (owner only, audited).
+
+**Why:** publishing through Meta's APIs needs extra permissions and, for other agents' accounts, App Review; a share screen needs neither, works for every account and network, and keeps the agent the one who presses Post. Captions are fixed text, not model output, and always end with the agent, the brokerage and the license number (Florida advertising rule). Each link carries `?src=` so every lead shows its network (D-023). Prompts that route WhatsApp messages know the new command: `assistant-chat-v2`, `assistant-intent-v2`.
+
+**Next:** share the Film Crew's image or video with the caption (once `GEMINI_API_KEY` is set), sent as media on WhatsApp so it can be posted straight from the phone.

@@ -12,7 +12,7 @@
 import { type Command, type ListedItem, parseCommand } from './commands.ts';
 import { OUTCOMES } from '../outcomes/outcomes.ts';
 
-export const ASSISTANT_CHAT_PROMPT_VERSION = 'assistant-chat-v1';
+export const ASSISTANT_CHAT_PROMPT_VERSION = 'assistant-chat-v2';
 
 export interface ChatTurn {
   readonly from: 'agent' | 'gencut';
@@ -40,6 +40,7 @@ What you can do, as exactly one action per reply:
 - "yes" / "no": answer the open question
 - "edit: <instruction>": rewrite the letter being discussed (shorter, warmer, mention X...)
 - "outcome N <code>" or "outcome <code>": record what happened with item N, or with the item being discussed. Codes: ${OUTCOMES.join(', ')}
+- "share": give the agent a ready caption and their own lead-page link to post on Instagram, Facebook, TikTok or WhatsApp themselves
 - "help"
 - "none": just talk (answer a question about how GenCut works, ask a clarifying question)
 
@@ -92,7 +93,7 @@ export function checkChatReply(reply: string, contextText: string): string | nul
   return r;
 }
 
-const ACTION = /^(none|help|new|sellers|buyers|campaigns|next|yes|no|(show|draft|save|dismiss) \d{1,2}|edit: .{1,300}|outcome( \d{1,2})? [a-z_]+)$/;
+const ACTION = /^(none|help|new|sellers|buyers|campaigns|next|share|yes|no|(show|draft|save|dismiss) \d{1,2}|edit: .{1,300}|outcome( \d{1,2})? [a-z_]+)$/;
 
 /** The model's answer as a reply and a command. The command passes the same parser and list check as typed text. */
 export function fromChat(value: unknown, listed: readonly ListedItem[]): { reply: string | null; command: Command } {

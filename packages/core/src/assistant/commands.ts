@@ -39,6 +39,8 @@ export type Command =
   | { readonly kind: 'edit'; readonly instruction: string }
   /** Record what happened with item N, or with the item last discussed when n is null. */
   | { readonly kind: 'outcome'; readonly n: number | null; readonly outcome: Outcome }
+  /** The agent's lead page as a ready caption and links to post on Instagram, Facebook and the rest. */
+  | { readonly kind: 'share' }
   | { readonly kind: 'unknown' };
 
 /** A numbered reference: "2", "#2", "number 2", "the second one". */
@@ -71,6 +73,11 @@ export function parseCommand(text: string): Command {
   if (/^(yes|y|yeah|yep|yup|sure|ok|okay|do it|go ahead|please do|si)$/.test(s)) return { kind: 'confirm', yes: true };
   if (/^(no|n|nope|not now|pass|skip|no thanks)$/.test(s)) return { kind: 'confirm', yes: false };
   if (/^(details|show details|more|tell me more|show me)$/.test(s)) return { kind: 'show', n: null };
+  if (
+    /^(share|post)( (it|this|kit|my link|my page|my lead page|link|page|to social( media)?|(to|on) (instagram|insta|ig|facebook|fb|tiktok|linkedin|x|twitter|whatsapp)))?$/.test(s) ||
+    /^(instagram|insta|ig|social|social media|my link|my lead page|lead page|link in bio|share kit)$/.test(s)
+  )
+    return { kind: 'share' };
   if (/^(next|suggest|suggestion|whats next|what next|what should i do|who should i contact|whos next|another one|give me one)$/.test(s)) return { kind: 'suggest' };
 
   const outcome = s.match(/^outcome(?:\s+(\d{1,2}))?\s+([a-z ]+)$/);
@@ -100,7 +107,7 @@ export function parseCommand(text: string): Command {
 }
 
 /** Version of the prompt that maps free text to a command; recorded on every model call. */
-export const ASSISTANT_INTENT_PROMPT_VERSION = 'assistant-intent-v1';
+export const ASSISTANT_INTENT_PROMPT_VERSION = 'assistant-intent-v2';
 
 const INTENT_SYSTEM = `You route messages from a real-estate agent to the commands of GenCut, their marketing assistant. Reply with a single JSON object {"command": string} and nothing else.
 
@@ -113,6 +120,7 @@ The command must be exactly one of:
 - "show N" — details of item N in the last list
 - "draft N" — draft a letter for item N in the last list
 - "save N" / "dismiss N" — keep or hide item N
+- "share" — a ready caption and the agent's own lead-page link to post on Instagram, Facebook, TikTok or WhatsApp (the agent posts it)
 - "unknown" — anything else, including requests to send, approve, publish, call, text or email anyone, which the assistant cannot do here
 
 N is a number from the last list shown below. Never invent a number that is not in the list.`;
@@ -130,7 +138,7 @@ export function commandFromIntent(value: unknown, listed: readonly ListedItem[])
   const text = value && typeof value === 'object' && typeof (value as { command?: unknown }).command === 'string'
     ? (value as { command: string }).command
     : '';
-  if (!/^(help|new|sellers|buyers|campaigns|unknown|(show|draft|save|dismiss) \d{1,2})$/.test(text.trim())) return { kind: 'unknown' };
+  if (!/^(help|new|sellers|buyers|campaigns|share|unknown|(show|draft|save|dismiss) \d{1,2})$/.test(text.trim())) return { kind: 'unknown' };
   const c = parseCommand(text);
   if ('n' in c && c.n !== null && !listed.some((i) => i.n === c.n)) return { kind: 'unknown' };
   if (c.kind === 'link' || c.kind === 'unlink') return { kind: 'unknown' };

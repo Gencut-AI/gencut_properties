@@ -4,21 +4,26 @@ permissions: { contents: read }
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - run: sudo apt-get install -y -qq sshpass lftp > /dev/null 2>&1
-      - name: Try access methods (public access published by the Florida Department of State)
+      - run: sudo apt-get install -y -qq lftp > /dev/null 2>&1
+      - name: Download and profile the quarterly corporate file (counts only, no names)
         env:
           SFTP_PASS: PubAccess1845!
         run: |
-          echo "== web portal"; curl -sS -o portal.html -w "%{http_code} %{url_effective}\n" -L https://sftp.floridados.gov/ ; grep -oiE "<title>[^<]*</title>|moveit|goanywhere|globalscape|crushftp|sftpgo|filezilla|serv-u|cerberus|jscape|axway|kiteworks" portal.html | sort -u | head
-          for U in Public public; do
-            for M in password keyboard-interactive; do
-              echo "== sftp $U $M"
-              printf 'ls -l\n' > b.txt
-              timeout 40 sshpass -p "$SFTP_PASS" sftp -oStrictHostKeyChecking=accept-new -oPreferredAuthentications=$M -oPubkeyAuthentication=no -b b.txt "$U@sftp.floridados.gov" 2>&1 | grep -vE "NOTICE|Attention|^$|property of the State|limited to|use described|Unauthorized or improper" | head -8
-            done
-          done
-          echo "== lftp"; timeout 60 lftp -u "Public,$SFTP_PASS" -e "set sftp:auto-confirm yes; ls; ls doc/quarterly/cor; bye" sftp://sftp.floridados.gov 2>&1 | head -20
-          echo "== curl sftp"; timeout 60 curl -sS -k --user "Public:$SFTP_PASS" "sftp://sftp.floridados.gov/" 2>&1 | head -10
-          echo "== ftps"; timeout 40 curl -sS --ssl-reqd --user "Public:$SFTP_PASS" "ftp://sftp.floridados.gov/" 2>&1 | head -5
+          start=$(date +%s)
+          timeout 1200 lftp -u "Public,$SFTP_PASS" -e "set sftp:auto-confirm yes; set net:timeout 30; get doc/quarterly/cor/cordata.zip -o cordata.zip; bye" sftp://sftp.floridados.gov
+          echo "DOWNLOAD_SECONDS $(( $(date +%s) - start ))"; ls -l cordata.zip
+          unzip -l cordata.zip | tail -15
+          F=$(unzip -Z1 cordata.zip | head -1); echo "FIRST_MEMBER $F"
+          start=$(date +%s); echo "LINES_ALL $(unzip -p cordata.zip | wc -l)"; echo "SCAN_SECONDS $(( $(date +%s) - start ))"
+          unzip -p cordata.zip "$F" | awk '{print length($0)}' | sort | uniq -c | sort -rn | head -3 | sed 's/^/LEN /'
+          unzip -p cordata.zip "$F" | cut -c205 | sort | uniq -c | sed 's/^/STATUS /'
+          unzip -p cordata.zip "$F" | cut -c206-220 | sort | uniq -c | sort -rn | head -10 | sed 's/^/TYPE /'
+          unzip -p cordata.zip "$F" | cut -c669-672 | sort | uniq -c | sort -rn | head -12 | sed 's/^/TITLE1 /'
+          unzip -p cordata.zip "$F" | cut -c673 | sort | uniq -c | sed 's/^/OTYPE1 /'
+          unzip -p cordata.zip "$F" | cut -c473-480 | sort | tail -1 | sed 's/^/MAX_FILEDATE /'
+          unzip -p cordata.zip "$F" | cut -c496-503 | sort | tail -1 | sed 's/^/MAX_LASTTX /'
+          unzip -p cordata.zip "$F" | cut -c13-204 | grep -c " LLC" | sed 's/^/LLC_NAMES /'
+          unzip -p cordata.zip "$F" | file - | sed 's/^/ENCODING /'
+          unzip -p cordata.zip "$F" | head -2 | cut -c1-12,205-220,473-480,506-544 | sed 's/^/SAMPLE /'

@@ -13,6 +13,7 @@ import { CAMPAIGN_STATUS_LABEL } from '../../_campaign/labels.ts';
 import { OutcomeForm } from '../../_campaign/outcome-form.tsx';
 import { MatchList } from '../../_matches/match-list.tsx';
 import { Score } from '../../_discovery/score.tsx';
+import { ActiveBadge } from '../../_buyers/active-badge.tsx';
 import { TriageButtons } from '../../_discovery/triage-buttons.tsx';
 
 export const metadata: Metadata = { title: 'Buyer' };
@@ -89,7 +90,10 @@ export default async function BuyerPage({
       <header className="flex items-start gap-5">
         <Score value={b.score} size="lg" />
         <div className="min-w-0">
-          <p className="text-sm font-medium text-ink-soft">Investor buyer · {STATUS_LABEL[b.status]}</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-soft">
+            Investor buyer · {STATUS_LABEL[b.status]}
+            {b.active && <ActiveBadge streak={p.streak} />}
+          </p>
           <h1 className="display mt-1 break-words text-3xl font-bold sm:text-4xl">{p.name}</h1>
           <p className="mt-1 text-ink-soft">
             {p.purchases} verified purchases{p.parcels && p.parcels > p.purchases ? ` (${p.parcels} parcels)` : ''} · {monthLabel(p.first.year, p.first.month)} to {monthLabel(p.latest.year, p.latest.month)}
@@ -201,7 +205,10 @@ export default async function BuyerPage({
           What the records don&rsquo;t show
         </h2>
         <ul className="mt-3 grid list-disc gap-2 pl-5 text-[0.95rem]">
-          <li>Whether this company is buying now. These are past purchases, not a sign of current intent.</li>
+          <li>
+            Whether this company is buying now. These are past purchases, not a sign of current intent
+            {b.active ? '; “Active buyer” means several purchases close together, the latest recently, nothing more' : ''}.
+          </li>
           <li>Other companies controlled by the same investor. Each company name is counted on its own.</li>
           <li>Purchases in other counties, or before {p.first.year}.</li>
           <li>Who to contact. The tax mailing address is where the county sends tax bills, not a confirmed contact.</li>

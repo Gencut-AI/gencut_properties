@@ -74,7 +74,7 @@ const fromBuyer = (b: BuyerSummary, outreach: LeadOutreach | undefined): Lead =>
     kind: 'buyer',
     href: `/buyers/${b.id}`,
     title: p.name,
-    detail: `Investor · ${p.purchases} verified purchases · latest ${monthLabel(p.latest.year, p.latest.month)}`,
+    detail: `${b.active ? 'Active investor' : 'Investor'} · ${p.purchases} verified purchases · latest ${monthLabel(p.latest.year, p.latest.month)}`,
     why: `Buys ${p.homeTypes.map((t) => t.label.toLowerCase()).slice(0, 2).join(' and ')} in ${zips}`,
     score: b.score,
     status: b.status,

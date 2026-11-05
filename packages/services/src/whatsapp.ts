@@ -596,6 +596,7 @@ async function act(sql: Sql, ctx: RequestContext, ws: string, command: Command, 
           items.map((b) => ({
             id: b.id,
             score: b.score,
+            active: b.active,
             name: b.profile.name,
             purchases: b.profile.purchases,
             zips: b.profile.zips.map((z) => z.zip),

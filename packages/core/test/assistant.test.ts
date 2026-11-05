@@ -85,6 +85,9 @@ describe('Assistant replies', () => {
     const b = buyersReply([{ id: 'x', score: 80, name: 'SAMPLE HOLDINGS LLC', purchases: 3, zips: ['33180'], latest: 'May 2026' }], SITE);
     assert.deepEqual(b.listed, [{ n: 1, kind: 'buyer', id: 'x', label: 'SAMPLE HOLDINGS LLC' }]);
     assert.match(b.text, /not a sign they are buying now/);
+    assert.ok(!b.text.includes('active buyer'));
+    const a = buyersReply([{ id: 'y', score: 85, active: true, name: 'SAMPLE HOLDINGS LLC', purchases: 3, zips: ['33180'], latest: 'May 2026' }], SITE);
+    assert.match(a.text, /1\. SAMPLE HOLDINGS LLC · \*active buyer\* · 3 purchases/);
   });
 });
 

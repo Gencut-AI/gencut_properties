@@ -77,7 +77,7 @@ export default async function OpportunitiesPage({
       )}
 
       {items.length > 0 ? (
-        <ul className="grid gap-4 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {items.map((o) => (
             <OpportunityCard key={o.id} o={o} />
           ))}

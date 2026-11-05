@@ -6,6 +6,7 @@ import {
   type PropertyTransaction,
   buyerProfile,
   headerIndex,
+  isActiveBuyer,
   monthLabel,
   nalRowToTransaction,
   ownerKey,
@@ -109,7 +110,8 @@ describe('Buyer Radar: profiles and score', () => {
 
     const busy = scoreBuyer(buyerProfile([1, 2, 3, 4, 5].map((n) => tx(n, { saleYear: 2026 }))), { zips: ['33101'], propertyUses: ['condo'] }, '2026-07-27');
     assert.ok(busy.eligible);
-    assert.deepEqual(busy.reasons.map((r) => [r.code, r.points]), [['purchases', 50], ['recent', 20]]);
+    // Mar, Apr and May 2026 fall in the 3 months ending with the latest purchase, 2 months before the roll: an active buyer.
+    assert.deepEqual(busy.reasons.map((r) => [r.code, r.points]), [['purchases', 50], ['recent', 20], ['active', 15]]);
     assert.match(busy.reasons[0]?.text ?? '', /5 qualified purchases on the county roll, Jan 2026 to May 2026/);
   });
 
@@ -118,6 +120,37 @@ describe('Buyer Radar: profiles and score', () => {
     assert.ok(s.eligible);
     const text = s.reasons.map((r) => r.text).join(' ').toLowerCase();
     for (const claim of ['buying now', 'actively', 'looking to buy', 'in the market', 'will buy', 'likely to buy']) assert.ok(!text.includes(claim), claim);
+  });
+
+  it('marks an active buyer: two or more purchases within 3 months, the latest within 6 months of the roll', () => {
+    const p = buyerProfile([tx(1, { saleYear: 2026 }), tx(5, { saleYear: 2026 }), tx(6, { saleYear: 2026 }), tx(7, { saleYear: 2026 })]);
+    assert.deepEqual(p.streak, { purchases: 3, from: { year: 2026, month: 5 }, to: { year: 2026, month: 7 } });
+    assert.equal(isActiveBuyer(p, '2026-10-28'), true, '3 months after the latest purchase');
+    assert.equal(isActiveBuyer(p, '2027-01-15'), true, '6 months after');
+    assert.equal(isActiveBuyer(p, '2027-02-01'), false, '7 months after');
+
+    const spread = buyerProfile([tx(1, { saleYear: 2026 }), tx(6, { saleYear: 2026 })]);
+    assert.equal(spread.streak?.purchases, 1, 'January is outside the 3 months ending in June');
+    assert.equal(isActiveBuyer(spread, '2026-07-01'), false);
+
+    // A multi-parcel deed is one purchase in the streak too.
+    const bulk = buyerProfile([tx(1, { saleYear: 2026, saleMonth: 6, price: 900_000, qualificationCode: '05' }), tx(2, { saleYear: 2026, saleMonth: 6, price: 900_000, qualificationCode: '05' })]);
+    assert.equal(bulk.streak?.purchases, 1);
+    assert.equal(isActiveBuyer(bulk, '2026-07-01'), false);
+
+    assert.equal(isActiveBuyer({}, '2026-07-01'), false, 'a profile scored before buyer-v3 has no streak');
+    assert.equal(buyerProfile([tx(1, { saleMonth: null }), tx(2, { saleMonth: null })]).streak, undefined, 'no months, no streak');
+  });
+
+  it('gives an active buyer 15 points and says it is recent buying, not a plan to buy', () => {
+    const s = scoreBuyer(buyerProfile([tx(5, { saleYear: 2026 }), tx(6, { saleYear: 2026 })]), focus, '2026-10-28');
+    assert.ok(s.eligible);
+    const active = s.reasons.find((r) => r.code === 'active');
+    assert.equal(active?.points, 15);
+    assert.equal(active?.text, 'Active buyer: 2 purchases between May 2026 and Jun 2026. Recent buying on the records, not a confirmed plan to buy.');
+    const same = scoreBuyer(buyerProfile([tx(1, { saleYear: 2026, saleMonth: 6 }), tx(2, { saleYear: 2026, saleMonth: 6 })]), focus, '2026-10-28');
+    assert.match(same.eligible ? (same.reasons.find((r) => r.code === 'active')?.text ?? '') : '', /2 purchases in Jun 2026\./);
+    assert.equal(BUYER_SCORING_VERSION, 'buyer-v3');
   });
 
   it('labels months for people', () => {

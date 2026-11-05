@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { formatMoneyShort } from '../../../lib/discovery-copy.ts';
 import { Score } from '../_discovery/score.tsx';
 import { TriageButtons } from '../_discovery/triage-buttons.tsx';
+import { ActiveBadge } from './active-badge.tsx';
 
 /** A buyer in the list: who, how much verified buying, where and what, and when last. */
 export function BuyerCard({ b }: { b: BuyerSummary }) {
@@ -15,9 +16,12 @@ export function BuyerCard({ b }: { b: BuyerSummary }) {
       <div className="flex gap-4">
         <Score value={b.score} />
         <div className="min-w-0 flex-1">
-          <Link href={`/buyers/${b.id}`} className="block focus-visible:outline-offset-4">
-            <h3 className="display truncate text-lg font-semibold">{p.name}</h3>
-          </Link>
+          <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+            <Link href={`/buyers/${b.id}`} className="block min-w-0 max-w-full focus-visible:outline-offset-4">
+              <h3 className="display truncate text-lg font-semibold">{p.name}</h3>
+            </Link>
+            {b.active && <ActiveBadge streak={p.streak} />}
+          </div>
           <p className="mt-0.5 text-sm">
             <span className="font-medium">
               {p.purchases} verified purchases{p.parcels && p.parcels > p.purchases ? ` (${p.parcels} parcels)` : ''}

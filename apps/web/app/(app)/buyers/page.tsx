@@ -2,6 +2,7 @@ import {
   FEED_VIEWS,
   type FeedView,
   MARKETS,
+  countActiveBuyers,
   countBuyers,
   getBusinessProfile,
   getBuyerDiscoveryStatus,
@@ -39,10 +40,11 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
   const view: FeedView = (FEED_VIEWS as readonly string[]).includes(raw) ? (raw as FeedView) : 'active';
   const filters = parseBuyerFilters(params);
   const filtering = Object.keys(filters).length > 0;
-  const [status, counts, items] = await Promise.all([
+  const [status, counts, items, activeCount] = await Promise.all([
     getBuyerDiscoveryStatus(db(), ctx, id),
     countBuyers(db(), ctx, id),
     listBuyers(db(), ctx, id, { view, filters }),
+    countActiveBuyers(db(), ctx, id),
   ]);
   const county = MARKETS.find((m) => m.key === profile.market)?.label ?? profile.market;
   const working = status.status === 'pending' || status.status === 'scoring';
@@ -73,6 +75,23 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
           <p className="mt-3 text-sm text-ink-soft">
             {status.eligible.toLocaleString('en-US')} companies qualified; the best {status.kept ?? 0} for your profile are shown.
           </p>
+        )}
+        {activeCount > 0 && view === 'active' && !filters.active && (
+          <Link
+            href="/buyers?active=1"
+            className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-[#f4c4d0] bg-[#fdf4f6] p-4 transition-colors hover:border-flamingo"
+          >
+            <span>
+              <span className="font-semibold">
+                {activeCount} active {activeCount === 1 ? 'buyer' : 'buyers'}
+              </span>
+              <span className="block text-sm text-ink-soft">
+                Two or more purchases within three months, the latest within six months of the roll. Recent buying on the records, not a confirmed
+                plan to buy.
+              </span>
+            </span>
+            <span className="shrink-0 text-sm font-semibold text-bay-deep">Show them →</span>
+          </Link>
         )}
       </header>
 
@@ -115,6 +134,10 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
             <option value="10">10 purchases</option>
           </select>
         </label>
+        <label className="flex h-11 items-center gap-2 text-sm">
+          <input type="checkbox" name="active" value="1" defaultChecked={filters.active === true} className="size-5 accent-bay" />
+          Active buyers only
+        </label>
         <button type="submit" className="h-11 rounded-full bg-ink px-5 text-sm font-medium text-paper">
           Filter
         </button>
@@ -126,7 +149,7 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
       </form>
 
       {items.length > 0 ? (
-        <ul className="grid gap-4 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {items.map((b) => (
             <BuyerCard key={b.id} b={b} />
           ))}

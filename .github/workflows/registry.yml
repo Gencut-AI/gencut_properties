@@ -35,7 +35,7 @@ jobs:
   run:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     concurrency:
       group: company-register
       cancel-in-progress: false
@@ -64,7 +64,7 @@ jobs:
   dry-run:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - run: sudo apt-get install -y -qq lftp > /dev/null
       - uses: actions/checkout@v4

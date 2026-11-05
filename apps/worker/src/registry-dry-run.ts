@@ -39,7 +39,7 @@ const lines = await source.lines(
     if (!r.filedOn) badDates++;
     types.set(r.filingType, (types.get(r.filingType) ?? 0) + 1);
   },
-  { limitMembers: 1 },
+  { limitMembers: 1, log: (line) => console.log(`[registry dry-run] ${line}`) },
 );
 const pct = (n: number) => `${((n / Math.max(parsed, 1)) * 100).toFixed(1)}%`;
 console.log(`[registry dry-run] ${lines} lines in ${Math.round((Date.now() - started) / 1000)} s: ${parsed} records, ${invalid} not records`);

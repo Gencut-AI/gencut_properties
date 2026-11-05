@@ -43,8 +43,11 @@ export interface RegisterFile {
 
 export interface RegistrySource {
   latest(): Promise<RegisterFile | null>;
-  /** Stream every record line of the file; `limitMembers` reads only the first n files in the archive (dry runs). Returns lines read. */
-  lines(file: RegisterFile, onLine: (line: string) => void, options?: { limitMembers?: number }): Promise<number>;
+  /**
+   * Stream every record line of the file; `limitMembers` reads only the first n files in the archive (dry runs), `log` reports
+   * timings. Returns lines read.
+   */
+  lines(file: RegisterFile, onLine: (line: string) => void, options?: { limitMembers?: number; log?: (line: string) => void }): Promise<number>;
 }
 
 /** The size and date of `cordata.zip` in an `lftp` listing of the quarterly folder, or null. */
@@ -107,11 +110,22 @@ export class SunbizSource implements RegistrySource {
     return found ? { sourceFile: `${SUNBIZ_QUARTERLY_FOLDER}/${SUNBIZ_QUARTERLY_FILE}@${found.fileDate}`, fileDate: found.fileDate, bytes: found.bytes } : null;
   }
 
-  async lines(_file: RegisterFile, onLine: (line: string) => void, options: { limitMembers?: number } = {}): Promise<number> {
+  async lines(_file: RegisterFile, onLine: (line: string) => void, options: { limitMembers?: number; log?: (line: string) => void } = {}): Promise<number> {
+    const log = options.log ?? (() => {});
     const dir = await mkdtemp(join(tmpdir(), 'gencut-sunbiz-'));
     const zipPath = join(dir, SUNBIZ_QUARTERLY_FILE);
     try {
-      await run('lftp', lftpArgs(`get ${SUNBIZ_QUARTERLY_FOLDER}/${SUNBIZ_QUARTERLY_FILE} -o ${zipPath}`), 30 * 60_000);
+      const started = Date.now();
+      const remote = `${SUNBIZ_QUARTERLY_FOLDER}/${SUNBIZ_QUARTERLY_FILE}`;
+      try {
+        // Four connections at once; the state's server may allow only one, so fall back to a plain download.
+        await run('lftp', lftpArgs(`pget -n 4 ${remote} -o ${zipPath}`), 40 * 60_000);
+      } catch (e) {
+        log(`parallel download failed (${e instanceof Error ? e.message.slice(0, 120) : 'error'}); downloading in one stream`);
+        await rm(zipPath, { force: true });
+        await run('lftp', lftpArgs(`get ${remote} -o ${zipPath}`), 60 * 60_000);
+      }
+      log(`downloaded in ${Math.round((Date.now() - started) / 1000)} s`);
       const members = (await run('unzip', ['-Z1', zipPath], 60_000))
         .split('\n')
         .map((s) => s.trim())
@@ -120,9 +134,10 @@ export class SunbizSource implements RegistrySource {
       if (members.length === 0) throw new Error('The register archive contains no data files.');
       let count = 0;
       for (const member of members.slice(0, options.limitMembers ?? members.length)) {
+        const memberStarted = Date.now();
+        const before = count;
         await new Promise<void>((resolve, reject) => {
           const child = spawn('unzip', ['-p', zipPath, member], { stdio: ['ignore', 'pipe', 'pipe'] });
-          const decoder = new TextDecoder('latin1');
           const split = lineSplitter((line) => {
             count++;
             onLine(line);
@@ -132,7 +147,8 @@ export class SunbizSource implements RegistrySource {
           child.stdout.on('data', (chunk: Buffer) => {
             if (failed) return;
             try {
-              split.push(decoder.decode(chunk, { stream: true }));
+              // The register is plain ASCII; Latin-1 maps every byte to one character, so a chunk never splits a character.
+              split.push(chunk.toString('latin1'));
             } catch (e) {
               failed = true;
               child.kill();
@@ -144,11 +160,11 @@ export class SunbizSource implements RegistrySource {
           child.on('close', (code) => {
             if (failed) return;
             if (code !== 0) return reject(new Error(`unzip exited ${code}: ${err.trim().slice(0, 300)}`));
-            split.push(decoder.decode());
             split.end();
             resolve();
           });
         });
+        log(`${member}: ${count - before} lines in ${Math.round((Date.now() - memberStarted) / 1000)} s`);
       }
       return count;
     } finally {
@@ -193,12 +209,16 @@ export async function runRegistryImport(deps: { sql: Sql; source: RegistrySource
   log(`${file.sourceFile}: looking up ${wanted.keys.size} companies`);
   try {
     const kept = new Map<string, CompanyRecord>();
-    const rowsRead = await source.lines(file, (line) => {
-      const key = ownerKey(line.slice(NAME_START, NAME_END));
-      if (!key || !isWantedCompany(wanted, key)) return;
-      const record = parseSunbizRecord(line);
-      if (record) kept.set(record.documentNumber, record);
-    });
+    const rowsRead = await source.lines(
+      file,
+      (line) => {
+        const key = ownerKey(line.slice(NAME_START, NAME_END));
+        if (!key || !isWantedCompany(wanted, key)) return;
+        const record = parseSunbizRecord(line);
+        if (record) kept.set(record.documentNumber, record);
+      },
+      { log },
+    );
     await storeCompanyRecords(sql, file.sourceFile, file.fileDate, [...kept.values()]);
     await completeCompanyImport(sql, file.sourceFile, { rowsRead, rowsKept: kept.size });
     log(`${file.sourceFile}: ${rowsRead} records read, ${kept.size} kept`);

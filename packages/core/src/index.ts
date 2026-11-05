@@ -22,3 +22,4 @@ export * from './assistant/replies.ts';
 export * from './assistant/chat.ts';
 export * from './leads/inbound.ts';
 export * from './social/instagram.ts';
+export * from './social/share.ts';

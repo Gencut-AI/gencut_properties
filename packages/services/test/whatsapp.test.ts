@@ -16,6 +16,7 @@ import {
   createDb,
   createLinkCode,
   ensureWorkspace,
+  getShareKit,
   getWhatsAppLink,
   listCampaigns,
   listOpportunities,
@@ -204,7 +205,7 @@ describe('WhatsApp assistant', () => {
     assert.equal(provider.calls.length, 1, 'free text the parser did not know went to the fast model');
     assert.match(list?.text ?? '', new RegExp(`Best seller opportunities[\\s\\S]*1\\. ${house} EXAMPLE WAY`));
     const [run] = await sql<{ purpose: string; role: string; prompt_version: string }[]>`SELECT purpose, role, prompt_version FROM model_runs WHERE workspace_id = ${workspaceId}`;
-    assert.deepEqual(run, { purpose: 'assistant_chat', role: 'fast', prompt_version: 'assistant-chat-v1' });
+    assert.deepEqual(run, { purpose: 'assistant_chat', role: 'fast', prompt_version: 'assistant-chat-v2' });
     assert.match(list?.text ?? '', /^Here are the strongest ones in your area\.\n\n\*Best seller/, 'the model\'s words, then the list');
 
     const [detail] = await say(waId, '2', deps);
@@ -291,6 +292,32 @@ describe('WhatsApp assistant', () => {
     assert.equal(await unlinkWhatsApp(sql, { ...a.u }), true);
     const [after] = await say('13055550005', 'sellers', deps);
     assert.match(after?.text ?? '', /not linked/);
+  });
+
+  it('shares the lead page: makes the page if needed, then sends a caption ready to forward', async () => {
+    const { u, workspaceId } = await agent('33405');
+    const sender = new RecordedSender();
+    const deps = { sender, router: null };
+    const waId = '13055550018';
+    await say(waId, `LINK ${(await createLinkCode(sql, u)).code}`, deps);
+    assert.equal(await getShareKit(sql, u, workspaceId, SITE), null, 'no page yet');
+
+    const [howTo, caption] = await say(waId, 'post to instagram', deps);
+    const kit = await getShareKit(sql, u, workspaceId, SITE);
+    assert.ok(kit, 'the page was created');
+    const ig = kit.targets.find((t) => t.network === 'instagram')!;
+    assert.match(howTo?.text ?? '', /Your share kit/);
+    assert.ok(howTo?.text.includes(ig.link));
+    assert.equal(caption?.text, kit.targets.find((t) => t.network === 'whatsapp')!.caption);
+    assert.match(caption?.text ?? '', /Ana Test · Example Bay Realty LLC/);
+    const [created] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM audit_events WHERE action = 'lead_page_created' AND entity_id = ${workspaceId}`;
+    assert.equal(created?.n, 1);
+
+    await say(waId, 'share', deps);
+    const [pages] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM lead_pages WHERE workspace_id = ${workspaceId}`;
+    assert.equal(pages?.n, 1, 'sharing again reuses the page');
+    const sent = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM whatsapp_messages WHERE wa_id = ${waId} AND direction = 'out' AND status = 'sent'`;
+    assert.equal(sent[0]?.n, 5, 'linked + two messages per share');
   });
 
   it('answers each message once, even when the webhook is retried', async () => {

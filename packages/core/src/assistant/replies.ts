@@ -17,6 +17,8 @@ export interface Reply {
   readonly buttons?: readonly { readonly title: string; readonly command: string }[];
   /** The numbered list this reply showed, kept so "2" means item 2 next time. */
   readonly listed?: readonly ListedItem[];
+  /** A second message sent right after this one, e.g. a caption on its own so it can be forwarded as is. */
+  readonly then?: Reply;
 }
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -38,6 +40,7 @@ export function helpReply(siteUrl: string): Reply {
       '• *save 2* / *dismiss 2*',
       '• *shorter*, *warmer* or "edit: …": change the letter on screen',
       '• "2 replied", "meeting set": record what happened',
+      '• *share*: a ready caption and your link for Instagram, Facebook, TikTok',
       '• *stop*: unlink this number',
       '',
       `Everything else is in the app: ${siteUrl}`,
@@ -299,5 +302,31 @@ export function outcomeReply(label: string, outcome: string): Reply {
 export function letterRevisedReply(title: string, greeting: string, paragraphs: readonly string[], campaignId: string, siteUrl: string): Reply {
   return {
     text: [`*Revised:* ${clip(title, 80)}`, '', clip([greeting, ...paragraphs].join('\n\n'), 2400), '', 'It passed the same checks. Nothing has been sent.', `Review in the app: ${siteUrl}/campaigns/${campaignId}`].join('\n'),
+  };
+}
+
+export interface ShareFacts {
+  /** The caption with the WhatsApp-tagged link, sent on its own so it can be forwarded as is. */
+  readonly whatsappCaption: string;
+  readonly instagramLink: string;
+  readonly facebookLink: string;
+  readonly tiktokLink: string;
+}
+
+/** The share kit on WhatsApp: how to post, then the caption alone, ready to forward. GenCut posts nothing itself. */
+export function shareReply(f: ShareFacts, siteUrl: string): Reply {
+  return {
+    text: [
+      '*Your share kit*',
+      'The next message is your post. Forward it to a chat or status, or copy it into Instagram, Facebook or TikTok.',
+      '',
+      'Links that show where each lead came from:',
+      `• Instagram bio or story sticker: ${f.instagramLink}`,
+      `• Facebook: ${f.facebookLink}`,
+      `• TikTok bio: ${f.tiktokLink}`,
+      '',
+      `One-tap buttons for every network are in the app: ${siteUrl}/leads#share`,
+    ].join('\n'),
+    then: { text: f.whatsappCaption },
   };
 }

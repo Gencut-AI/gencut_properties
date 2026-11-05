@@ -7,6 +7,7 @@ import {
   getDiscoveryStatus,
   getInstagramView,
   getLeadPage,
+  getShareKit,
   instagramCheckDue,
   syncInstagramComments,
   getLeadsOverview,
@@ -33,7 +34,7 @@ import { signInRedirectOrigin } from '../../../lib/site-url.ts';
 import { startCampaignAction } from '../_campaign/actions.ts';
 import { AutoRefresh } from '../_discovery/auto-refresh.tsx';
 import { checkInstagramAction, createLeadPageAction, dismissInstagramAction, sendInstagramLinkAction, setInboundStatusAction } from './actions.ts';
-import { CopyLink } from './copy-link.tsx';
+import { ShareKitPanel } from './share-kit.tsx';
 import { CountUp } from './count-up.tsx';
 
 export const metadata: Metadata = { title: 'Leads' };
@@ -140,6 +141,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const h = await headers();
   const origin = signInRedirectOrigin(process.env.GENCUT_SITE_URL, h.get('x-forwarded-host') ?? h.get('host'), h.get('x-forwarded-proto')) ?? '';
   const pageUrl = leadPage ? `${origin}/l/${leadPage.slug}` : null;
+  const shareKit = leadPage && origin ? await getShareKit(db(), ctx, ws, origin) : null;
   const ago = (d: Date) => {
     const m = Math.round((Date.now() - d.getTime()) / 60_000);
     return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
@@ -387,13 +389,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                   {pageUrl.replace(/^https?:\/\//, '')}
                 </a>
               </p>
-              <div className="flex flex-wrap gap-2">
-                <CopyLink url={`${pageUrl}?src=instagram`} label="Copy Instagram link" />
-                <CopyLink url={`${pageUrl}?src=facebook`} label="Copy Facebook link" />
-                <CopyLink url={`${pageUrl}?src=tiktok`} label="Copy TikTok link" />
-                <CopyLink url={pageUrl} label="Copy plain link" />
-              </div>
             </div>
+            {shareKit && <ShareKitPanel kit={shareKit} />}
             {inbound.leads.length === 0 ? (
               <p className="text-ink-soft">No social leads yet. Put the link in your bio, or open it yourself to see how it works.</p>
             ) : (

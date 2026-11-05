@@ -195,9 +195,10 @@ const TX_COLUMNS = (db: Db) => db`
 
 /** Workspaces whose buyers are due: asked for, abandoned, or scored before the county's newest import. */
 export async function workspacesToScoreBuyers(sql: Sql): Promise<string[]> {
-  const rows = await sql<{ workspace_id: string; market: MarketKey; buyer_status: string; buyer_file_date: string | null; started_at: Date | null; stale: boolean }[]>`
+  const rows = await sql<{ workspace_id: string; market: MarketKey; buyer_status: string; buyer_file_date: string | null; started_at: Date | null; stale: boolean; outdated: boolean }[]>`
     SELECT d.workspace_id, p.market, d.buyer_status, to_char(d.buyer_file_date, 'YYYY-MM-DD') AS buyer_file_date,
-           d.buyer_scored_at AS started_at, (d.buyer_status = 'scoring' AND coalesce(d.buyer_scored_at, d.requested_at) < now() - ${STALE_CLAIM}::interval) AS stale
+           d.buyer_scored_at AS started_at, (d.buyer_status = 'scoring' AND coalesce(d.buyer_scored_at, d.requested_at) < now() - ${STALE_CLAIM}::interval) AS stale,
+           EXISTS (SELECT 1 FROM opportunities o WHERE o.workspace_id = d.workspace_id AND o.type = 'investor_buyer' AND o.scoring_version <> ${BUYER_SCORING_VERSION}) AS outdated
     FROM workspace_discovery d JOIN business_profiles p ON p.workspace_id = d.workspace_id
   `;
   const latest = await sql<{ county_code: string; file_date: string }[]>`
@@ -207,7 +208,8 @@ export async function workspacesToScoreBuyers(sql: Sql): Promise<string[]> {
     .filter((r) => {
       const imported = latest.find((l) => l.county_code === marketCountyCode(r.market))?.file_date;
       if (!imported) return false; // nothing to score from yet
-      return r.buyer_status === 'pending' || r.stale || (r.buyer_status === 'ready' && (r.buyer_file_date ?? '') < imported);
+      // A new roll, or buyers ranked by an older rule, are ranked again.
+      return r.buyer_status === 'pending' || r.stale || (r.buyer_status === 'ready' && ((r.buyer_file_date ?? '') < imported || r.outdated));
     })
     .map((r) => r.workspace_id);
 }
@@ -318,6 +320,8 @@ export interface BuyerSummary {
   readonly reasons: readonly BuyerReason[];
   readonly scoringVersion: string;
   readonly profile: BuyerProfile;
+  /** Several purchases close together, the latest recently (buyer-v3 `active` reason). Recent buying, not intent. */
+  readonly active: boolean;
   /** File date of the roll the profile was built from (YYYY-MM-DD). */
   readonly rollFileDate: string;
   readonly updatedAt: Date;
@@ -366,6 +370,7 @@ const toSummary = (r: BuyerRow): BuyerSummary => ({
   reasons: r.reasons,
   scoringVersion: r.scoring_version,
   profile: r.evidence.profile,
+  active: r.reasons.some((x) => x.code === 'active'),
   rollFileDate: r.evidence.rollFileDate,
   updatedAt: r.updated_at,
 });
@@ -380,6 +385,8 @@ export interface BuyerFilters {
   readonly zip?: string;
   readonly propertyUse?: PropertyUse;
   readonly minPurchases?: number;
+  /** Only active buyers. */
+  readonly active?: true;
 }
 
 /** Filters from query-string values; anything invalid is ignored. */
@@ -392,8 +399,11 @@ export function parseBuyerFilters(q: Record<string, string | string[] | undefine
     ...(zip && /^\d{5}$/.test(zip) ? { zip } : {}),
     ...(use && ['single_family', 'condo', 'townhouse', 'multifamily', 'vacant_land', 'other'].includes(use) ? { propertyUse: use as PropertyUse } : {}),
     ...(Number.isInteger(min) && min >= 2 && min <= 50 ? { minPurchases: min } : {}),
+    ...(one('active') === '1' ? { active: true as const } : {}),
   };
 }
+
+const ACTIVE_REASON = [{ code: 'active' }];
 
 /** The workspace's buyers, best first. */
 export async function listBuyers(
@@ -410,6 +420,7 @@ export async function listBuyers(
     db`status = ANY(${VIEW_STATUSES[options.view ?? 'active']}::text[])`,
     ...(f.zip ? [db`evidence->'profile'->'zips' @> ${db.json([{ zip: f.zip }] as never)}`] : []),
     ...(f.minPurchases ? [db`(evidence->'profile'->>'purchases')::int >= ${f.minPurchases}`] : []),
+    ...(f.active ? [db`reasons @> ${db.json(ACTIVE_REASON as never)}`] : []),
     ...(f.propertyUse
       ? [db`EXISTS (SELECT 1 FROM jsonb_array_elements(evidence->'profile'->'homeTypes') t WHERE t->>'useCode' = ANY(${useCodesFor(f.propertyUse)}::text[]))`]
       : []),
@@ -422,6 +433,17 @@ export async function listBuyers(
     LIMIT ${limit}
   `;
   return rows.map(toSummary);
+}
+
+/** Active buyers among the workspace's current ("For you") buyers. */
+export async function countActiveBuyers(db: Db, ctx: RequestContext, workspaceId: string): Promise<number> {
+  await requireMembershipFor(db, ctx, workspaceId);
+  const [r] = await db<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM opportunities
+    WHERE workspace_id = ${workspaceId} AND type = 'investor_buyer' AND status = ANY(${VIEW_STATUSES.active}::text[])
+      AND reasons @> ${db.json(ACTIVE_REASON as never)}
+  `;
+  return r?.n ?? 0;
 }
 
 export async function countBuyers(db: Db, ctx: RequestContext, workspaceId: string): Promise<Record<FeedView, number>> {

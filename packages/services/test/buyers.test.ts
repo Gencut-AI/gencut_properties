@@ -12,6 +12,7 @@ import {
   type Sql,
   claimTransactionImport,
   completeTransactionImport,
+  countActiveBuyers,
   countBuyers,
   countOpportunities,
   createDb,
@@ -157,6 +158,24 @@ describe('Buyer Radar services', () => {
     assert.deepEqual(await names({ type: 'condo' }), ['BETA HOLDINGS INC']);
     assert.deepEqual(await names({ min: '3' }), ['Alpha Homes, L.L.C.']);
     assert.deepEqual(parseBuyerFilters({ zip: 'x', type: 'castle', min: '1' }), {}, 'invalid filters are ignored');
+  });
+
+  it('flags active buyers, filters and counts them, and ranks again buyers ranked by an older rule', async () => {
+    const { u, workspaceId } = await workspace();
+    await scoreWorkspaceBuyers(sql, workspaceId);
+    // Alpha bought Feb, Mar and Apr 2026, 3 months before the roll; Beta's two purchases are from early 2025.
+    const all = await listBuyers(sql, u, workspaceId);
+    assert.deepEqual(all.map((b) => [b.profile.name, b.active]), [['Alpha Homes, L.L.C.', true], ['BETA HOLDINGS INC', false]]);
+    assert.deepEqual(all[0]?.profile.streak, { purchases: 3, from: { year: 2026, month: 2 }, to: { year: 2026, month: 4 } });
+    const active = await listBuyers(sql, u, workspaceId, { filters: parseBuyerFilters({ active: '1' }) });
+    assert.deepEqual(active.map((b) => b.profile.name), ['Alpha Homes, L.L.C.']);
+    assert.equal(await countActiveBuyers(sql, u, workspaceId), 1);
+
+    assert.ok(!(await workspacesToScoreBuyers(sql)).includes(workspaceId), 'up to date');
+    await sql`UPDATE opportunities SET scoring_version = 'buyer-v2' WHERE workspace_id = ${workspaceId} AND type = 'investor_buyer'`;
+    assert.ok((await workspacesToScoreBuyers(sql)).includes(workspaceId), 'ranked by an older rule: ranked again');
+    await scoreWorkspaceBuyers(sql, workspaceId);
+    assert.ok(!(await workspacesToScoreBuyers(sql)).includes(workspaceId));
   });
 
   it('keeps triage and outcomes through re-scoring, and reports buyers apart from sellers', async () => {

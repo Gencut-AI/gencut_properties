@@ -283,3 +283,11 @@ can give exact purchase dates.
 **Why now:** Meta delivers real WhatsApp messages (even from app admins) only to published apps, and publishing requires a Privacy Policy URL and data-deletion instructions. `/privacy` (public, no sign-in) states only what GenCut does today: the data kept for agents, public-record owners and buyers, lead-page visitors, Instagram commenters and email recipients; the processors (Supabase, Netlify, Anthropic, Resend, Meta); no selling, no advertising use; and how to have data deleted (`/privacy#delete`: email request within 30 days, STOP on WhatsApp, unsubscribe links). The lead page links to it.
 
 **Rule:** update the page with every new kind of data or processor. Counsel review before the commercial launch.
+
+## D-027 · 2026-11-05 · Active buyers (buyer-v3), and why not the county's weekly sales feed
+
+**Decision (Paul, 5 Nov):** mark investor buyers with recent repeat buying. A company is an **active buyer** when it made 2 or more purchases (deeds) within 3 calendar months and the latest of them is within 6 months of the roll's file date. It earns 15 points (reason `active`), a badge on the Buyers list, buyer page, Leads tab and WhatsApp lists, an "Active buyers only" filter and a count on the Buyers tab. The wording is always "recent buying on the records, not a confirmed plan to buy": the records show what a company bought, never what it intends. Profiles keep the streak (`streak`: purchases, from, to); buyers ranked by an older rule are ranked again by the next discovery run. On the 28 Oct 2026 roll, 161 of 856 Miami-Dade companies with 2+ purchases qualify.
+
+**Considered and rejected for now:** Miami-Dade's free weekly "Property Point View" open data (owner, last sale date and price, updated weekly). Measured on 5 Nov 2026 it held 139 sales of any kind since 1 Sept and 26 in October: deeds reach it with the same 2–3 month lag as the state roll GenCut already imports, and it lacks the state's qualification codes (family and related-company transfers). Truly faster data needs the Clerk's daily recorded documents ($110/month), deferred until the budget allows.
+
+**Also:** card lists use one explicit column on phones, so a long company name truncates instead of widening the page.

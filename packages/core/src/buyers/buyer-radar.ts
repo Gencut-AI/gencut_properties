@@ -21,11 +21,16 @@ export const OPPORTUNITY_TYPES = ['potential_seller', 'responded_to_ad', 'sphere
 export type OpportunityType = (typeof OPPORTUNITY_TYPES)[number];
 
 /** Version of the buyer rule; recorded on every buyer opportunity and outcome. */
-export const BUYER_SCORING_VERSION = 'buyer-v2';
+export const BUYER_SCORING_VERSION = 'buyer-v3';
 /** A company needs this many qualified purchases (deeds) in the window to be a buyer. */
 export const MIN_BUYER_PURCHASES = 2;
 /** A purchase below this price is treated as a nominal transfer, not a market purchase. */
 export const MIN_PURCHASE_PRICE = 10_000;
+/** An active buyer made at least this many purchases within `ACTIVE_STREAK_MONTHS` calendar months… */
+export const ACTIVE_MIN_PURCHASES = 2;
+export const ACTIVE_STREAK_MONTHS = 3;
+/** …and the latest of them within this many months of the roll. */
+export const ACTIVE_RECENT_MONTHS = 6;
 
 /** One verified purchase: a qualified sale whose owner of record afterwards is a company. */
 export interface PropertyTransaction {
@@ -167,6 +172,12 @@ export interface BuyerProfile {
   readonly price: { readonly min: number; readonly median: number; readonly max: number } | null;
   /** The tax-mailing address on the most recent purchase. */
   readonly mailing: PropertyTransaction['ownerMailing'];
+  /**
+   * Purchases in the `ACTIVE_STREAK_MONTHS` calendar months ending with the
+   * latest purchase's month (purchases with no month are left out). Absent on
+   * profiles scored before buyer-v3.
+   */
+  readonly streak?: { readonly purchases: number; readonly from: { readonly year: number; readonly month: number }; readonly to: { readonly year: number; readonly month: number } };
 }
 
 function counts<K extends string>(items: readonly K[]): { key: K; count: number }[] {
@@ -200,11 +211,33 @@ export function buyerProfile(txs: readonly PropertyTransaction[]): BuyerProfile 
     homeTypes: perDeed((t) => t.useCode).map((c) => ({ useCode: c.key, label: DOR_USE_LABELS[c.key] ?? 'Residential', count: c.count })),
     price: single.length ? { min: single.at(0)!, median, max: single.at(-1)! } : null,
     mailing: newest.ownerMailing,
+    ...streakOf(deeds),
   };
 }
 
+const fromIndex = (i: number) => ({ year: Math.floor(i / 12), month: (i % 12) + 1 });
+
+function streakOf(deeds: readonly Purchase[]): Pick<BuyerProfile, 'streak'> {
+  const months = deeds.filter((d) => d.saleMonth !== null).map((d) => monthIndex(d.saleYear, d.saleMonth));
+  if (months.length === 0) return {};
+  const to = Math.max(...months);
+  const inWindow = months.filter((m) => m > to - ACTIVE_STREAK_MONTHS);
+  return { streak: { purchases: inWindow.length, from: fromIndex(Math.min(...inWindow)), to: fromIndex(to) } };
+}
+
+/**
+ * An active buyer: several purchases close together, the latest recently. Recent
+ * buying on the records, measured against the roll's file date (YYYY-MM-DD); it
+ * is not a sign the company is buying today.
+ */
+export function isActiveBuyer(p: Pick<BuyerProfile, 'streak'>, rollDate: string): boolean {
+  if (!p.streak || p.streak.purchases < ACTIVE_MIN_PURCHASES) return false;
+  const roll = monthIndex(Number(rollDate.slice(0, 4)), Number(rollDate.slice(5, 7)));
+  return roll - monthIndex(p.streak.to.year, p.streak.to.month) <= ACTIVE_RECENT_MONTHS;
+}
+
 export interface BuyerReason {
-  readonly code: 'purchases' | 'recent' | 'focus_zip' | 'mostly_focus_zip' | 'focus_type' | 'focus_price';
+  readonly code: 'purchases' | 'recent' | 'active' | 'focus_zip' | 'mostly_focus_zip' | 'focus_type' | 'focus_price';
   readonly points: number;
   readonly text: string;
 }
@@ -234,6 +267,12 @@ export function scoreBuyer(p: BuyerProfile, focus: AgentFocus, rollDate: string)
   const age = roll - monthIndex(p.latest.year, p.latest.month);
   if (age <= 6) reasons.push({ code: 'recent', points: 20, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 6 months of the roll.` });
   else if (age <= 12) reasons.push({ code: 'recent', points: 10, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 12 months of the roll.` });
+  if (p.streak && isActiveBuyer(p, rollDate)) {
+    const span = p.streak.from.year === p.streak.to.year && p.streak.from.month === p.streak.to.month
+      ? `in ${monthLabel(p.streak.to.year, p.streak.to.month)}`
+      : `between ${monthLabel(p.streak.from.year, p.streak.from.month)} and ${monthLabel(p.streak.to.year, p.streak.to.month)}`;
+    reasons.push({ code: 'active', points: 15, text: `Active buyer: ${p.streak.purchases} purchases ${span}. Recent buying on the records, not a confirmed plan to buy.` });
+  }
 
   const inFocus = Math.min(p.purchases, p.zips.filter((z) => focus.zips.includes(z.zip)).reduce((a, z) => a + z.count, 0));
   if (inFocus > 0) {

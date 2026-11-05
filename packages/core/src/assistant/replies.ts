@@ -105,6 +105,8 @@ export function sellersReply(items: readonly SellerLine[], siteUrl: string): Rep
 export interface BuyerLine {
   readonly id: string;
   readonly score: number;
+  /** Several purchases close together, the latest recently (buyer-v3). */
+  readonly active?: boolean;
   readonly name: string;
   readonly purchases: number;
   readonly zips: readonly string[];
@@ -117,7 +119,7 @@ export function buyersReply(items: readonly BuyerLine[], siteUrl: string): Reply
   return {
     text: [
       '*Best investor buyers* (from past purchases on the county roll, not a sign they are buying now)',
-      ...items.map((b, i) => `${i + 1}. ${b.name} · ${b.purchases} purchases, latest ${b.latest} · ${b.zips.slice(0, 3).join(', ')} · score ${b.score}`),
+      ...items.map((b, i) => `${i + 1}. ${b.name}${b.active ? ' · *active buyer*' : ''} · ${b.purchases} purchases, latest ${b.latest} · ${b.zips.slice(0, 3).join(', ')} · score ${b.score}`),
       '',
       'Reply with a number for details, or *draft 1* for an introduction letter.',
     ].join('\n'),

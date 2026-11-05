@@ -24,6 +24,7 @@ import {
 } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
+import { type CompanyRegistryEntry, companyRecordFor } from './company-registry.ts';
 import type { RequestContext } from './context.ts';
 import type { Db, Sql } from './db.ts';
 import { ServiceError } from './errors.ts';
@@ -351,6 +352,8 @@ export interface BuyerDetail extends BuyerSummary {
   readonly purchases: readonly BuyerPurchase[];
   /** Purchases cited by the profile that are no longer stored (a newer roll dropped them). */
   readonly missingPurchases: number;
+  /** The company's record in the Florida company register, or null when none matches (D-028). */
+  readonly registry: CompanyRegistryEntry | null;
 }
 
 interface BuyerRow {
@@ -490,7 +493,9 @@ export async function getBuyer(db: Db, ctx: RequestContext, workspaceId: string,
       };
     })
     .sort((a, b) => b.saleYear - a.saleYear || (b.saleMonth ?? 0) - (a.saleMonth ?? 0) || a.parcelId.localeCompare(b.parcelId));
-  return { ...toSummary(r), purchases, missingPurchases: ids.length - purchases.length };
+  const spellings = [...new Set([r.evidence.profile.name, ...purchases.map((p) => p.ownerNameOnRoll)])];
+  const registry = await companyRecordFor(db, r.evidence.profile.ownerKey, spellings);
+  return { ...toSummary(r), purchases, missingPurchases: ids.length - purchases.length, registry };
 }
 
 export interface BuyerDiscoveryView {

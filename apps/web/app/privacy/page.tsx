@@ -51,7 +51,9 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Property owners and buyers in public records:</strong> owner names, mailing addresses, property details and recorded sales from the
-            county property roll published by the State of Florida. GenCut uses them to suggest who an agent might write to.
+            county property roll published by the State of Florida. GenCut uses them to suggest who an agent might write to. For companies that
+            bought homes, GenCut also keeps their record from the Florida Division of Corporations register: registered name and status, business
+            addresses, registered agent, and the names and titles of the officers or managers on file (not their addresses).
           </li>
           <li>
             <strong>People who fill in an agent’s contact page:</strong> name, email, optional phone, what they are interested in, ZIP code, message, the

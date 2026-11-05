@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   type Command,
   type ListedItem,
+  buyerDetailReply,
   buyersReply,
   commandFromIntent,
   helpReply,
@@ -88,6 +89,9 @@ describe('Assistant replies', () => {
     assert.ok(!b.text.includes('active buyer'));
     const a = buyersReply([{ id: 'y', score: 85, active: true, name: 'SAMPLE HOLDINGS LLC', purchases: 3, zips: ['33180'], latest: 'May 2026' }], SITE);
     assert.match(a.text, /1\. SAMPLE HOLDINGS LLC · \*active buyer\* · 3 purchases/);
+    const facts = { id: 'y', name: 'SAMPLE HOLDINGS LLC', purchases: 3, parcels: 3, window: 'Jan 2026 to May 2026', zips: ['33180'], homeTypes: ['single family'], priceRange: null, score: 85 };
+    assert.ok(!buyerDetailReply(facts, 1, SITE).text.includes('register'));
+    assert.match(buyerDetailReply({ ...facts, people: ['DOE JANE (Manager)'] }, 1, SITE).text, /On file in the Florida company register: DOE JANE \(Manager\)/);
   });
 });
 

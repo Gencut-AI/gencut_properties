@@ -185,6 +185,8 @@ export interface BuyerDetailFacts {
   readonly homeTypes: readonly string[];
   readonly priceRange: string | null;
   readonly score: number;
+  /** People on file in the Florida company register, as "NAME (Title)" (D-028). */
+  readonly people?: readonly string[];
 }
 
 export function buyerDetailReply(b: BuyerDetailFacts, n: number, siteUrl: string): Reply {
@@ -195,6 +197,7 @@ export function buyerDetailReply(b: BuyerDetailFacts, n: number, siteUrl: string
       `ZIP codes: ${b.zips.slice(0, 5).join(', ')}`,
       `Home types: ${b.homeTypes.join(', ')}`,
       ...(b.priceRange ? [`Paid (single homes): ${b.priceRange}`] : []),
+      ...(b.people?.length ? [`On file in the Florida company register: ${b.people.slice(0, 3).join(', ')}`] : []),
       'Past purchases only: the records do not show whether it is buying now.',
       '',
       `Every purchase, with folio numbers: ${siteUrl}/buyers/${b.id}`,

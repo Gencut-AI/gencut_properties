@@ -1,0 +1,78 @@
+name: Company register
+
+# Imports Florida company register records (Sunbiz) for the companies that
+# bought homes, so buyer pages show who is behind them (D-028). The register is
+# published quarterly on the Department of State's public SFTP server, which
+# GitHub's servers can reach.
+#
+# - `run`: weekly, on demand, and when register code lands on main. Downloads
+#   the register only when its file is new or a roll import finished since the
+#   last run; otherwise does nothing.
+# - `dry-run`: on pull requests that touch register code, reads the real file
+#   (first part only) with no database and prints aggregates only.
+
+on:
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - apps/worker/src/registry*.ts
+      - packages/core/src/sources/fl-sunbiz.ts
+      - packages/services/src/company-registry.ts
+      - .github/workflows/registry.yml
+  pull_request:
+    paths:
+      - apps/worker/src/registry*.ts
+      - packages/core/src/sources/fl-sunbiz.ts
+      - .github/workflows/registry.yml
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: company-register
+      cancel-in-progress: false
+    steps:
+      - name: Check configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error title=DATABASE_URL secret missing::Add the database connection string as a repository secret named DATABASE_URL."
+            exit 1
+          fi
+      - run: sudo apt-get install -y -qq lftp > /dev/null
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @gencut/worker...
+      - name: Import the register
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm --filter @gencut/worker registry
+
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: sudo apt-get install -y -qq lftp > /dev/null
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @gencut/worker...
+      - name: Read the real register file, no database
+        run: node apps/worker/src/registry-dry-run.ts

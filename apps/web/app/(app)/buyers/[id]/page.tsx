@@ -14,6 +14,7 @@ import { OutcomeForm } from '../../_campaign/outcome-form.tsx';
 import { MatchList } from '../../_matches/match-list.tsx';
 import { Score } from '../../_discovery/score.tsx';
 import { ActiveBadge } from '../../_buyers/active-badge.tsx';
+import { RegistryCard } from '../../_buyers/registry-card.tsx';
 import { TriageButtons } from '../../_discovery/triage-buttons.tsx';
 
 export const metadata: Metadata = { title: 'Buyer' };
@@ -105,6 +106,8 @@ export default async function BuyerPage({
       </header>
 
       <TriageButtons id={b.id} status={b.status} />
+
+      <RegistryCard entry={b.registry} rollName={[...spellings].sort((x, y) => y.length - x.length)[0] ?? p.name} />
 
       <section aria-labelledby="purchases">
         <h2 id="purchases" className="display text-xl font-semibold">
@@ -211,7 +214,10 @@ export default async function BuyerPage({
           </li>
           <li>Other companies controlled by the same investor. Each company name is counted on its own.</li>
           <li>Purchases in other counties, or before {p.first.year}.</li>
-          <li>Who to contact. The tax mailing address is where the county sends tax bills, not a confirmed contact.</li>
+          <li>
+            Who decides on purchases. The register lists the officers or managers on file, and the tax mailing address is where the county sends
+            tax bills; neither confirms a contact.
+          </li>
         </ul>
       </section>
 

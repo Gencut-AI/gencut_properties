@@ -1,0 +1,36 @@
+name: Probe Sunbiz SFTP
+on: { push: { branches: [probe/sunbiz] } }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: sudo apt-get install -y -qq sshpass > /dev/null
+      - name: List and sample (public access published by the Florida Department of State)
+        env:
+          SFTP_USER: Public
+          SFTP_PASS: PubAccess1845!
+        run: |
+          set -x
+          cat > batch.txt <<'B'
+          ls -l
+          ls -l doc
+          ls -l doc/quarterly
+          ls -l doc/quarterly/cor
+          ls -l doc/cor | tail -5
+          B
+          sshpass -p "$SFTP_PASS" sftp -oStrictHostKeyChecking=accept-new -oPreferredAuthentications=password -oPubkeyAuthentication=no -b batch.txt "$SFTP_USER@sftp.floridados.gov" 2>&1 | head -80
+          FIRST=$(sshpass -p "$SFTP_PASS" sftp -oStrictHostKeyChecking=accept-new -oPreferredAuthentications=password -oPubkeyAuthentication=no -b - "$SFTP_USER@sftp.floridados.gov" <<< 'ls -1 doc/quarterly/cor' 2>/dev/null | grep -v '^sftp>' | head -1)
+          echo "FIRST=$FIRST"
+          if [ -n "$FIRST" ]; then
+            time sshpass -p "$SFTP_PASS" sftp -oStrictHostKeyChecking=accept-new -oPreferredAuthentications=password -oPubkeyAuthentication=no -b - "$SFTP_USER@sftp.floridados.gov" <<< "get $FIRST part.bin" > /dev/null 2>&1
+            ls -l part.bin; file part.bin
+            (unzip -l part.bin 2>/dev/null | head -20) || true
+            (unzip -p part.bin 2>/dev/null | head -c 2881 | cut -c1-500 | sed -E 's/[A-Z]{2,} [A-Z]{2,}/NAME/g' | head -3) || true
+            echo "LINES:"; (unzip -p part.bin 2>/dev/null | wc -l) || true
+            echo "LLC lines:"; (unzip -p part.bin 2>/dev/null | cut -c206-220 | sort | uniq -c | sort -rn | head -12) || true
+            echo "status:"; (unzip -p part.bin 2>/dev/null | cut -c205 | sort | uniq -c) || true
+            echo "line lengths:"; (unzip -p part.bin 2>/dev/null | awk '{print length($0)}' | sort | uniq -c | sort -rn | head -5) || true
+            echo "officer titles:"; (unzip -p part.bin 2>/dev/null | cut -c669-672 | sort | uniq -c | sort -rn | head -12) || true
+          fi

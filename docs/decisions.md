@@ -303,3 +303,14 @@ can give exact purchase dates.
 **Data kept:** officers' own addresses, the registered agent's address and the federal tax number are not read. The page says people on file are officers or managers as filed, not confirmation of who decides on purchases. The privacy policy lists the register as a source.
 
 **Next:** address buyer letters to the person on file ("Attn:"), and group companies that share a manager (one investor behind several LLCs).
+
+## D-029 · 2026-11-05 · The agent's dashboard is the Home screen
+
+**Decision (Paul, 5 Nov):** the dashboard is for GenCut's customers, inside the app, not a page in Claude. Home becomes each agent's dashboard (`getAgentDashboard`), built only from GenCut's own records, scoped to the agent's workspace plus the shared public-record purchases of its county:
+
+- **Six figures**, each opening its tab: seller leads, active investor buyers (of all buyers), letters to review, emails sent, social leads (new), WhatsApp on or off.
+- **Do next**, at most four, most useful first: letters waiting for review, new social leads, Instagram comments waiting, the strongest new seller lead, the strongest active buyer, then setup gaps (lead page, WhatsApp).
+- **Your market**: company purchases in the agent's ZIP codes by month (18 months to the newest sale on record; months within 3 of the roll are marked as still filling in), the latest 12 months' totals and median price (multi-home deeds left out of the price), and the county's busiest ZIP codes with the agent's own marked.
+- Results by score and the agent's settings stay below.
+
+**Why not the Claude dashboard or Claude connectors:** a Claude dashboard runs on the viewer's own Claude connections, so agents could not open it, and connectors such as Acquirepad or Rental Market Data belong to Paul's Claude account (Rental Market Data also allows 50 lookups a month and has no Miami rents). Market data from outside GenCut joins the agent dashboard only through GenCut's own data imports or API accounts.

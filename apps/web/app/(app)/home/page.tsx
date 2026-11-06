@@ -1,10 +1,11 @@
-import { MARKETS, getBusinessProfile, getDiscoveryStatus, getPermissions, listOpportunities, outcomeReport } from '@gencut/services';
+import { MARKETS, MARKET_LAG_MONTHS, getAgentDashboard, getBusinessProfile, getDiscoveryStatus, getPermissions, outcomeReport } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '../../../lib/db.ts';
+import { formatDay } from '../../../lib/discovery-copy.ts';
 import { requireSession } from '../../../lib/session.ts';
-import { OpportunityCard } from '../_discovery/opportunity-card.tsx';
+import { DashboardTiles, MarketSection, NextActions } from '../_dashboard/dashboard.tsx';
 import { DiscoveryStatusPanel } from '../_discovery/status-panel.tsx';
 import { formatPriceBand } from '../_profile-form/values.ts';
 
@@ -28,10 +29,10 @@ export default async function HomePage() {
   const { ctx, workspace } = await requireSession();
   const profile = await getBusinessProfile(db(), ctx, workspace.workspaceId);
   if (!profile) redirect('/onboarding');
-  const [permissions, discovery, top, outcomes] = await Promise.all([
+  const [permissions, discovery, dashboard, outcomes] = await Promise.all([
     getPermissions(db(), ctx, workspace.workspaceId),
     getDiscoveryStatus(db(), ctx, workspace.workspaceId),
-    listOpportunities(db(), ctx, workspace.workspaceId, { limit: 3 }),
+    getAgentDashboard(db(), ctx, workspace.workspaceId),
     outcomeReport(db(), ctx, workspace.workspaceId),
   ]);
   const contactOn = Object.entries(permissions.contact).filter(([, on]) => on).map(([c]) => c);
@@ -41,33 +42,27 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col gap-10">
-      <section>
-        <h1 className="display text-4xl font-bold sm:text-5xl">
-          {greeting(new Date())}, {firstName}
-        </h1>
-        <p className="mt-3 text-ink-soft">{profile.brokerageName}</p>
+      <section className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div>
+          <h1 className="display text-4xl font-bold sm:text-5xl">
+            {greeting(new Date())}, {firstName}
+          </h1>
+          <p className="mt-3 text-ink-soft">
+            {profile.brokerageName} · {profile.focusZips.length === 1 ? `ZIP ${profile.focusZips[0]}` : `${profile.focusZips.length} ZIP codes`}
+          </p>
+        </div>
+        <Link href="/leads" className="inline-flex h-11 items-center rounded-full bg-bay px-5 text-sm font-semibold text-paper hover:bg-bay-deep">
+          Open your leads
+        </Link>
       </section>
 
-      <div className="flex flex-col gap-4">
-        <DiscoveryStatusPanel view={discovery} countyName={market.replace(/ County$/, '')} />
-        {top.length > 0 && (
-          <section aria-labelledby="top" className="flex flex-col gap-4">
-            <div className="flex items-baseline justify-between gap-4">
-              <h2 id="top" className="display text-xl font-semibold">
-                Strongest right now
-              </h2>
-              <Link href="/opportunities" className="min-h-11 content-center text-sm font-medium text-bay-deep underline-offset-4 hover:underline">
-                See all
-              </Link>
-            </div>
-            <ul className="grid gap-4 lg:grid-cols-3">
-              {top.map((o) => (
-                <OpportunityCard key={o.id} o={o} />
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
+      {discovery.status !== 'ready' && <DiscoveryStatusPanel view={discovery} countyName={market.replace(/ County$/, '')} />}
+
+      <DashboardTiles d={dashboard} />
+
+      <NextActions actions={dashboard.actions} />
+
+      <MarketSection d={dashboard} lagMonths={MARKET_LAG_MONTHS} rollLabel={dashboard.rollDate ? formatDay(dashboard.rollDate) : null} />
 
       <section aria-labelledby="results" className="rounded-panel border border-glass-deep p-6">
         <h2 id="results" className="display text-xl font-semibold">

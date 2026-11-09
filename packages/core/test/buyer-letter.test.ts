@@ -14,6 +14,7 @@ import {
   checkBuyerLetter,
   contactOnRecord,
   RETIRED_VERSIONS,
+  readsAsAgentsTitle,
   draftKind,
 } from '../src/index.ts';
 
@@ -131,7 +132,13 @@ describe('Buyer introduction letters', () => {
     assert.match(buyerLetterPrompt(named).system, /greet them by their full name/);
     assert.deepEqual(codes(good, named), ['greeting'], 'greeting the company team misses the person');
     assert.deepEqual(codes({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,' } }, named), []);
-    assert.equal(BUYER_LETTER_PROMPT_VERSION, 'buyer-intro-v2');
+    assert.equal(BUYER_LETTER_PROMPT_VERSION, 'buyer-intro-v3');
+    assert.match(buyerLetterPrompt(named).system, /never to a sentence about yourself/);
+    const p1 = (p: string) => ({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,', paragraphs: [p, ...good.letter.paragraphs.slice(1)] } });
+    assert.deepEqual(codes(p1('My name is Ana Test, and I am writing to introduce myself to you as Manager of Bayview Sample Holdings LLC.'), named), ['greeting'], 'reads as the agent\'s title');
+    assert.deepEqual(codes(p1('My name is Ana Test, and I am writing to you in your role as Manager of Bayview Sample Holdings LLC.'), named), []);
+    assert.deepEqual(codes(p1('My name is Ana Test, and I work with condominium owners in 33180 and 33160.'), named), []);
+    assert.equal(readsAsAgentsTitle('I am reaching out as a local agent.', 'Manager'), false);
   });
 
   it('looks up the rules a campaign was written under', () => {
@@ -140,6 +147,7 @@ describe('Buyer introduction letters', () => {
     assert.equal(draftKind(null), SELLER_DRAFT, 'campaigns from before versions were stored');
     assert.equal(draftKind('campaign-draft-v0'), null);
     assert.equal(draftKind('buyer-intro-v1'), BUYER_DRAFT, 'letters written before the greeting rule stay readable');
+    assert.equal(draftKind('buyer-intro-v2'), BUYER_DRAFT);
     for (const [old, now] of Object.entries(RETIRED_VERSIONS)) assert.equal(draftKind(old), draftKind(now), old);
     assert.equal(BUYER_DRAFT.audience, 'company');
   });

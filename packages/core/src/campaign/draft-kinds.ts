@@ -29,10 +29,15 @@ export const BUYER_DRAFT: DraftKind = { version: BUYER_LETTER_PROMPT_VERSION, au
  * Versions GenCut once wrote under, and the kind that now reads them. A version
  * is retired here only when the current rules are a superset whose additions do
  * not apply to its stored facts: buyer-intro-v2 added the greeting rule for
- * `company.contact`, a fact v1 campaigns never have. A stored campaign must
- * never become unreadable because its prompt was revised.
+ * `company.contact`, a fact v1 campaigns never have; buyer-intro-v3 added that
+ * the contact's title is never attached to the agent, which only tightens how a
+ * v2 letter is worded. A stored campaign must never become unreadable because
+ * its prompt was revised.
  */
-export const RETIRED_VERSIONS: Readonly<Record<string, string>> = { 'buyer-intro-v1': BUYER_LETTER_PROMPT_VERSION };
+export const RETIRED_VERSIONS: Readonly<Record<string, string>> = {
+  'buyer-intro-v1': BUYER_LETTER_PROMPT_VERSION,
+  'buyer-intro-v2': BUYER_LETTER_PROMPT_VERSION,
+};
 
 /** The kind a stored campaign was written under; null for a version GenCut no longer knows. */
 export function draftKind(stored: string | null): DraftKind | null {

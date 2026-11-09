@@ -1,4 +1,4 @@
-import { getBusinessProfile, getCampaign, getCampaignMedia, getEmailOutreach, isServiceError } from '@gencut/services';
+import { getBusinessProfile, getCampaign, getCampaignMailTo, getCampaignMedia, getEmailOutreach, isServiceError } from '@gencut/services';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -11,6 +11,7 @@ import { FilmCrew } from '../../_campaign/film-crew.tsx';
 import { EmailSend } from '../../_campaign/email-send.tsx';
 import { CAMPAIGN_STATUS_LABEL, CHANNEL_LABEL } from '../../_campaign/labels.ts';
 import { LetterEditor } from '../../_campaign/letter-editor.tsx';
+import { MailToCard } from '../../_campaign/mail-to.tsx';
 import { AutoRefresh } from '../../_discovery/auto-refresh.tsx';
 
 export const metadata: Metadata = { title: 'Campaign' };
@@ -32,10 +33,11 @@ export default async function CampaignPage({
     throw e;
   });
   const d = c.draft;
-  const [media, profile, email] = await Promise.all([
+  const [media, profile, email, mailTo] = await Promise.all([
     getCampaignMedia(db(), ctx, workspace.workspaceId, c.id),
     getBusinessProfile(db(), ctx, workspace.workspaceId),
     getEmailOutreach(db(), ctx, workspace.workspaceId, c.id, emailConfig()),
+    c.audience === 'company' ? getCampaignMailTo(db(), ctx, workspace.workspaceId, c.id) : Promise.resolve(null),
   ]);
   const emailed = email.sentTo;
   // A draft that has been "writing" for over two minutes most likely never started.
@@ -127,6 +129,8 @@ export default async function CampaignPage({
               </ul>
             )}
           </section>
+
+          {mailTo && <MailToCard m={mailTo} />}
 
           <section aria-labelledby="letter">
             <div className="flex items-baseline justify-between gap-4">

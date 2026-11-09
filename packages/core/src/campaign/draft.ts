@@ -190,7 +190,8 @@ export interface DraftProblem {
     | 'reveals_subject'
     | 'bad_hashtag'
     | 'claims_intent'
-    | 'claims_availability';
+    | 'claims_availability'
+    | 'greeting';
   readonly message: string;
 }
 

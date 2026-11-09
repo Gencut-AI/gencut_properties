@@ -34,6 +34,8 @@ import {
   storeTransactions,
   transactionImportDue,
   workspacesToScoreBuyers,
+  getCampaignMailTo,
+  storeCompanyRecords,
 } from '../src/index.ts';
 
 // Synthetic companies and sales. Not real owners, parcels or prices.
@@ -231,6 +233,44 @@ describe('Buyer Radar services', () => {
       (e) => e instanceof ServiceError && e.code === 'invalid',
     );
     await assert.rejects(startCampaignMedia(sql, u, workspaceId, campaignId), (e) => e instanceof ServiceError && /seller campaigns only/.test(e.message));
+  });
+
+  it('addresses a buyer letter to the manager on the company’s register record, with a mail-to block', async () => {
+    const { u, workspaceId } = await workspace();
+    await scoreWorkspaceBuyers(sql, workspaceId);
+    const buyers = await listBuyers(sql, u, workspaceId);
+    const alpha = buyers.find((b) => b.profile.ownerKey === ownerKey('Alpha Homes, L.L.C.'));
+    const beta = buyers.find((b) => b.profile.ownerKey === ownerKey('BETA HOLDINGS INC'));
+    assert.ok(alpha && beta);
+    const place = { address1: '100 EXAMPLE BLVD', address2: 'SUITE 5', city: 'MIAMI', state: 'FL', zip: '33131', country: 'US' };
+    const record = (doc: string, name: string, status: 'active' | 'inactive') => ({
+      state: 'FL' as const, documentNumber: doc, name, nameKey: ownerKey(name), status, filingType: 'FLAL', principal: place,
+      mailing: { ...place, address1: 'PO BOX 7' }, filedOn: '2019-03-15', lastTransactionOn: '2026-04-01', reportYears: [2026],
+      registeredAgent: null, moreOfficers: false,
+      officers: [{ title: 'AMBR', type: 'company' as const, name: 'EXAMPLE PARENT LLC' }, { title: 'MGR', type: 'person' as const, name: `${'DOE'.padEnd(20)}${'JANE'.padEnd(14)}A` }],
+    });
+    await storeCompanyRecords(sql, 'register@test', '2026-10-07', [record('L1', 'ALPHA HOMES, L.L.C.', 'active'), record('L2', 'BETA HOLDINGS INC', 'inactive')]);
+
+    const { campaignId } = await startCampaignDraft(sql, u, workspaceId, alpha.id);
+    const draft = letter('I work with single family owners in 33180 and would be glad to share opportunities there as they come up.');
+    const provider = new RecordedProvider([reply({ ...draft, letter: { ...draft.letter, greeting: 'Dear Jane Doe,' } })]);
+    assert.equal(await generateCampaignDraft(sql, campaignId, new ModelRouter({ providers: { anthropic: provider } })), 'review');
+    assert.match(provider.calls[0]?.request.user ?? '', /company\.contact \(Person the letter is addressed to\): Jane Doe/);
+    assert.deepEqual(await getCampaignMailTo(sql, u, workspaceId, campaignId), {
+      company: 'ALPHA HOMES, L.L.C.',
+      attention: 'Jane Doe, Manager',
+      lines: ['PO BOX 7', 'SUITE 5', 'MIAMI FL 33131'],
+      source: 'register',
+    });
+
+    // An inactive company on the register: the letter goes to the company, at the tax roll's mailing address.
+    const b = await startCampaignDraft(sql, u, workspaceId, beta.id);
+    const [facts] = await sql<{ facts: { key: string }[] }[]>`SELECT facts FROM campaigns WHERE id = ${b.campaignId}`;
+    assert.ok(!facts?.facts.some((f) => f.key === 'company.contact'));
+    const mail = await getCampaignMailTo(sql, u, workspaceId, b.campaignId);
+    assert.equal(mail?.attention, null);
+    assert.equal(mail?.source, 'tax_roll');
+    assert.equal(mail?.company, 'BETA HOLDINGS INC');
   });
 
   it('keeps workspaces apart', async () => {

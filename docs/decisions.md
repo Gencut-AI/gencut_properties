@@ -314,3 +314,11 @@ can give exact purchase dates.
 - Results by score and the agent's settings stay below.
 
 **Why not the Claude dashboard or Claude connectors:** a Claude dashboard runs on the viewer's own Claude connections, so agents could not open it, and connectors such as Acquirepad or Rental Market Data belong to Paul's Claude account (Rental Market Data also allows 50 lookups a month and has no Miami rents). Market data from outside GenCut joins the agent dashboard only through GenCut's own data imports or API accounts.
+
+## D-030 · 2026-11-09 · Buyer letters addressed to the person on the register record
+
+**Decision (Paul, 9 Nov):** when a buying company matches the Florida company register exactly and is active there, its letter is addressed to the person on file: managers first, then members, then presidents and directors, people only (never a company holding a role), in filed order within a title. The model is given `company.contact` ("Jane Doe") and `company.contact_title` ("Manager"), greets them by full name, and never says where the name came from; a letter whose greeting lacks the contact's last name is flagged (`greeting`) for review. Prompt version `buyer-intro-v2`.
+
+**Names:** the register's 42-character officer name holds last name (20), first name (14), middle initial and suffix in fixed slots (13,285 of 13,424 people on the matched records fit them). Names are shown in normal case ("Jane A Doe", "McKay"). A name typed freely outside the slots is shown as filed and never used as a contact, since its first and last names cannot be told apart.
+
+**Mail to:** a company campaign shows a "Mail to" block with a Copy button: the company, an "Attn: Jane Doe, Manager" line, and the register's mailing address when the match is exact and the company active; otherwise no Attn line and the tax roll's mailing address. A shortened-name match, an inactive company or no match keeps the letter addressed to the company team, as before.

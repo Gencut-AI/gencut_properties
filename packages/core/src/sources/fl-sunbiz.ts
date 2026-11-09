@@ -213,7 +213,76 @@ export function pickCompanyRecord(rollName: string, candidates: readonly Company
   return only ? { record: only, match: 'shortened' } : null;
 }
 
-/** People listed on the record (officers who are persons), in filed order, with their titles as words. */
+export interface PersonName {
+  readonly first: string;
+  readonly middle: string;
+  readonly last: string;
+  readonly suffix: string;
+  /** "Jane A Doe Jr" in normal case; for a name not in the register's slots, the name as filed in normal case. */
+  readonly display: string;
+  /** True when the name sat in the register's slots (last 20, first 14, middle 1, suffix), so first and last are known. */
+  readonly structured: boolean;
+}
+
+const LAST_SLOT = 20;
+const FIRST_SLOT = 14;
+
+/** "DOE" → "Doe", "MCDONALD" → "McDonald", "O'BRIEN-SMITH" → "O'Brien-Smith". */
+export function nameCase(word: string): string {
+  return word
+    .toLowerCase()
+    .replace(/(^|[\s'’-])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase())
+    .replace(/\bMc([a-z])/g, (_, ch: string) => `Mc${ch.toUpperCase()}`);
+}
+
+/**
+ * A person's name as the register files it: last name in 20 characters, first
+ * name in 14, middle initial in 1, then any suffix. A name that does not keep
+ * those slots (typed freely) is shown as filed, and its parts are not guessed.
+ */
+export function officerName(raw: string): PersonName {
+  const s = raw.replace(/\s+$/, '');
+  const last = s.slice(0, LAST_SLOT).trim();
+  const first = s.slice(LAST_SLOT, LAST_SLOT + FIRST_SLOT).trim();
+  const slotted = s.length > LAST_SLOT && /\s/.test(s.charAt(LAST_SLOT - 1)) && last !== '' && first !== '' && !/\s{2,}/.test(last) && !/\s{2,}/.test(first);
+  if (!slotted) {
+    const shown = nameCase(s.replace(/\s+/g, ' ').trim());
+    return { first: '', middle: '', last: '', suffix: '', display: shown, structured: false };
+  }
+  const middle = s.slice(LAST_SLOT + FIRST_SLOT, LAST_SLOT + FIRST_SLOT + 1).trim();
+  const suffix = s.slice(LAST_SLOT + FIRST_SLOT + 1).trim();
+  const parts = { first: nameCase(first), middle: middle.toUpperCase(), last: nameCase(last), suffix: nameCase(suffix) };
+  return { ...parts, display: [parts.first, parts.middle, parts.last, parts.suffix].filter(Boolean).join(' '), structured: true };
+}
+
+/** People listed on the record (officers who are persons), in filed order, with their names and titles as words. */
 export function peopleOnRecord(r: Pick<CompanyRecord, 'officers'>): { name: string; title: string }[] {
-  return r.officers.filter((o) => o.type !== 'company').map((o) => ({ name: o.name, title: officerTitleLabel(o.title) }));
+  return r.officers.filter((o) => o.type !== 'company').map((o) => ({ name: officerName(o.name).display, title: officerTitleLabel(o.title) }));
+}
+
+/** Titles of people who run a company, best first: whom a letter to the company is addressed to. */
+const CONTACT_TITLES = ['MGR', 'MANA', 'MGRM', 'AMBR', 'AMB', 'MBR', 'MEMB', 'P', 'PRES', 'PD', 'CEO', 'AUTH', 'AP', 'GP', 'DIR', 'D'];
+
+export interface RecordContact {
+  readonly name: PersonName;
+  /** The title as words, e.g. Manager. */
+  readonly title: string;
+}
+
+/**
+ * The person a letter to the company is addressed to: a person on the record
+ * whose name sits in the register's slots, a manager or member before other
+ * officers, in filed order. Null when no listed person qualifies.
+ */
+export function contactOnRecord(r: Pick<CompanyRecord, 'officers'>): RecordContact | null {
+  const rank = (code: string) => {
+    const i = CONTACT_TITLES.indexOf(code.trim().toUpperCase());
+    return i < 0 ? CONTACT_TITLES.length : i;
+  };
+  const people = r.officers
+    .map((o, i) => ({ o, i, name: officerName(o.name) }))
+    .filter((x) => x.o.type === 'person' && x.name.structured)
+    .sort((a, b) => rank(a.o.title) - rank(b.o.title) || a.i - b.i);
+  const best = people[0];
+  return best ? { name: best.name, title: officerTitleLabel(best.o.title) } : null;
 }

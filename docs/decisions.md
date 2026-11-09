@@ -334,3 +334,9 @@ can give exact purchase dates.
 **What happened:** the retried Barboza letter failed twice with "The letter must not count the homes the company owns or bought." The writer is given the county's home-type label as a fact ("multifamily, under 10 units"), and the count check (a number or "several" before homes, units, properties…) rejected "10 units" in it. Any buyer of small multifamily buildings would fail the same way.
 
 **Decision:** before the count check, the home-type labels given as facts are set aside, as the company's own name already is. A count written next to them ("you hold 3 homes") is still caught. Only the check changed, so the prompt version stays `buyer-intro-v2`.
+
+## D-033 · 2026-11-09 · The contact's title is never attached to the agent
+
+**What happened:** the first letter to a named contact (Barboza Investment Group) read "I am writing to introduce myself to you as President of Barboza Investment Group Corp.", which reads as if the agent were the President.
+
+**Decision:** prompt `buyer-intro-v3` tells the writer the contact's title is theirs: attach it to them ("in your role as President"), never to a sentence about the agent. A check (`readsAsAgentsTitle`) flags a sentence about the agent ("I am…", "introduce myself") that carries the title after "as", unless it is explicitly theirs ("your role / capacity / position"); the draft is retried with the problem named. `buyer-intro-v1` and `-v2` map to v3 (`RETIRED_VERSIONS`): v3 only tightens wording.

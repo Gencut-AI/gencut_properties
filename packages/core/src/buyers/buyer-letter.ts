@@ -21,7 +21,7 @@ import {
 import type { RecordContact } from '../sources/fl-sunbiz.ts';
 import type { BuyerProfile } from './buyer-radar.ts';
 
-export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v2';
+export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v3';
 
 /** ZIP codes and home types passed to the writer: the company's top few, by purchases. */
 const MAX_PATTERN_ITEMS = 3;
@@ -65,7 +65,7 @@ Rules you must follow:
 5. Fair housing: never refer to race, colour, religion, national origin, sex, disability, familial status, age, or any proxy for them, and never describe who should or should not live in a home or neighbourhood.
 6. No pressure or guarantees: no "act now", no guaranteed returns, no claims that the market is about to change.
 7. Tone: brief, professional, business-to-business. The letter is under 180 words, 2 or 3 short paragraphs, ending with one low-pressure invitation to talk.
-8. If a person the letter is addressed to is provided (company.contact), greet them by their full name ("Dear Jane Doe,") and write to them as someone at the company. Never say where their name came from. Without one, address the company.
+8. If a person the letter is addressed to is provided (company.contact), greet them by their full name ("Dear Jane Doe,") and write to them as someone at the company. Never say where their name came from. Their title (company.contact_title) is theirs: if you mention it, attach it to them ("in your role as President"), never to a sentence about yourself, where it could read as your own title ("I am writing to introduce myself as President of…"). Without a person, address the company.
 9. The signature must include the agent's name and the brokerage name exactly as provided, and the license number if provided.
 10. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the company replies with an email). 2 or 3 steps, days counted from the first letter.
 
@@ -134,6 +134,21 @@ function withoutCompanyName(d: CampaignDraft, company: string): CampaignDraft {
   };
 }
 
+/** Sentences of a paragraph, split after . ! or ? */
+const sentences = (p: string) => p.split(/(?<=[.!?])\s+/);
+
+/**
+ * A sentence about the agent ("I am…", "introduce myself") that carries the
+ * contact's title after "as", unless the title is explicitly theirs ("your role
+ * as President"): it reads as the agent's own title.
+ */
+export function readsAsAgentsTitle(sentence: string, title: string): boolean {
+  const s = sentence.replace(/[’]/g, "'");
+  if (!/\b(?:introduce myself|I am|I'm|I work|I serve)\b/i.test(s)) return false;
+  if (!new RegExp(`\\bas (?:the |a |an )?${escape(title)}\\b`, 'i').test(s)) return false;
+  return !/\byour (?:role|capacity|position)\b/i.test(s);
+}
+
 /** Every check a seller letter gets, plus the buyer rules. An empty list means the letter may be shown for review. */
 export function checkBuyerLetter(d: CampaignDraft, facts: readonly CampaignFact[], agent: AgentForDraft): DraftProblem[] {
   const clean = withoutCompanyName(d, facts.find((f) => f.key === 'company.name')?.value ?? '');
@@ -168,6 +183,10 @@ export function checkBuyerLetter(d: CampaignDraft, facts: readonly CampaignFact[
     const last = contact.split(' ').at(-1) ?? contact;
     if (!normalizeText(d.letter.greeting).includes(normalizeText(last))) {
       problems.push({ code: 'greeting', message: `Greet ${contact} by name: the letter is addressed to them.` });
+    }
+    const title = facts.find((f) => f.key === 'company.contact_title')?.value;
+    if (title && d.letter.paragraphs.some((p) => sentences(p).some((x) => readsAsAgentsTitle(x, title)))) {
+      problems.push({ code: 'greeting', message: `"${title}" is ${contact}'s title: attach it to them ("in your role as ${title}"), not to a sentence about you.` });
     }
   }
 

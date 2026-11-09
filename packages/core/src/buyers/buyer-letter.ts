@@ -158,7 +158,10 @@ export function checkBuyerLetter(d: CampaignDraft, facts: readonly CampaignFact[
   }
   // The agent's office address, in the signature, is the one street address a letter may carry.
   if (STREET.test(letter)) problems.push({ code: 'reveals_subject', message: 'The letter must not contain a street address.' });
-  if (COUNT.test(letter)) problems.push({ code: 'reveals_subject', message: 'The letter must not count the homes the company owns or bought.' });
+  // The county's home-type labels are provided facts ("multifamily, under 10 units"): a size of building, not a count.
+  const labels = (facts.find((f) => f.key === 'company.home_types')?.value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const counted = labels.reduce((t, l) => t.replace(new RegExp(escape(l), 'gi'), ' '), letter);
+  if (COUNT.test(counted)) problems.push({ code: 'reveals_subject', message: 'The letter must not count the homes the company owns or bought.' });
 
   const contact = facts.find((f) => f.key === 'company.contact')?.value;
   if (contact) {

@@ -21,6 +21,7 @@ import {
   SELLER_DRAFT,
   type StoredParcel,
   buyerFacts,
+  contactOnRecord,
   campaignFacts,
   checkCampaignTransition,
   draftKind,
@@ -29,6 +30,7 @@ import {
 } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
+import { companyRecordFor } from './company-registry.ts';
 import type { RequestContext } from './context.ts';
 import type { Db, Sql } from './db.ts';
 import { ServiceError } from './errors.ts';
@@ -104,9 +106,12 @@ export async function startCampaignDraft(
     let plan: { kind: DraftKind; facts: CampaignFact[]; title: string; objective: string };
     if (opp.type === 'investor_buyer') {
       if (!opp.evidence?.profile) throw new Error(`buyer opportunity ${opp.id} has no profile`);
+      // Address the letter to a person on the company's register record, only when the record matched the name exactly.
+      const registry = await companyRecordFor(tx, opp.evidence.profile.ownerKey, [opp.evidence.profile.name]);
+      const contact = registry?.match === 'exact' && registry.record.status === 'active' ? contactOnRecord(registry.record) : null;
       plan = {
         kind: BUYER_DRAFT,
-        facts: buyerFacts(opp.evidence.profile, agentFrom(profile)),
+        facts: buyerFacts(opp.evidence.profile, agentFrom(profile), contact),
         title: `Introduction to ${opp.evidence.profile.name}`,
         objective: 'Introduce the agent to the company by direct mail and offer to share opportunities that fit its focus.',
       };
@@ -488,4 +493,38 @@ export async function reviseCampaignLetter(
     problems = found.map((p) => p.message);
   }
   throw new ServiceError('invalid', `The rewrite did not pass GenCut's checks (${problems.slice(0, 2).join(' ')}). The letter is unchanged.`);
+}
+
+/** Where to post a buyer letter: the company, the person it is addressed to, and an address (D-030). */
+export interface MailTo {
+  readonly company: string;
+  /** "Jane Doe, Manager", from the letter's facts; null when the letter is addressed to the company. */
+  readonly attention: string | null;
+  readonly lines: readonly string[];
+  /** Where the address comes from: the company's mailing address in the Florida register, or the tax roll's mailing address. */
+  readonly source: 'register' | 'tax_roll';
+}
+
+export async function getCampaignMailTo(db: Db, ctx: RequestContext, workspaceId: string, campaignId: string): Promise<MailTo | null> {
+  await requireMembershipFor(db, ctx, workspaceId);
+  const [row] = await db<{ facts: CampaignFact[]; evidence: { profile?: { ownerKey: string; name: string; mailing: { address1: string; address2: string; city: string; state: string; zip: string } } } | null; type: string | null }[]>`
+    SELECT c.facts, o.evidence, o.type FROM campaigns c LEFT JOIN opportunities o ON o.id = c.opportunity_id
+    WHERE c.workspace_id = ${workspaceId} AND c.id = ${campaignId}
+  `;
+  const profile = row?.type === 'investor_buyer' ? row.evidence?.profile : undefined;
+  if (!row || !profile) return null;
+  const fact = (k: string) => row.facts.find((f) => f.key === k)?.value ?? null;
+  const contact = fact('company.contact');
+  const title = fact('company.contact_title');
+  const registry = await companyRecordFor(db, profile.ownerKey, [profile.name]);
+  const place = (a: { address1: string; address2: string; city: string; state: string; zip: string }) =>
+    [a.address1, a.address2, [a.city, a.state, a.zip].filter(Boolean).join(' ')].map((l) => l.trim()).filter(Boolean);
+  const fromRegister = registry?.match === 'exact' && registry.record.status === 'active' ? place(registry.record.mailing) : [];
+  const lines = fromRegister.length >= 2 ? fromRegister : place(profile.mailing);
+  return {
+    company: registry?.match === 'exact' ? registry.record.name : profile.name,
+    attention: contact ? [contact, title].filter(Boolean).join(', ') : null,
+    lines,
+    source: fromRegister.length >= 2 ? 'register' : 'tax_roll',
+  };
 }

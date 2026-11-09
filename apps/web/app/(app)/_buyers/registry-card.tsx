@@ -1,4 +1,4 @@
-import { filingTypeLabel, officerTitleLabel } from '@gencut/core';
+import { filingTypeLabel, officerName, officerTitleLabel } from '@gencut/core';
 import type { CompanyRegistryEntry } from '@gencut/services';
 import { formatDay } from '../../../lib/discovery-copy.ts';
 
@@ -62,7 +62,7 @@ export function RegistryCard({ entry, rollName }: { entry: CompanyRegistryEntry 
         <ul className="mt-2 grid gap-2">
           {people.map((o) => (
             <li key={`${o.title}-${o.name}`} className="flex flex-wrap items-baseline justify-between gap-x-4 rounded-xl bg-glass/60 px-4 py-2.5">
-              <span className="font-semibold">{o.name}</span>
+              <span className="font-semibold">{officerName(o.name).display}</span>
               <span className="text-sm text-ink-soft">{officerTitleLabel(o.title)}</span>
             </li>
           ))}

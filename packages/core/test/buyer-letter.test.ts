@@ -12,6 +12,7 @@ import {
   buyerLetterPrompt,
   buyerProfile,
   checkBuyerLetter,
+  contactOnRecord,
   draftKind,
 } from '../src/index.ts';
 
@@ -97,6 +98,30 @@ describe('Buyer introduction letters', () => {
   it('keeps every seller-letter rule, including the brokerage in the signature', () => {
     assert.ok(codes(withParagraph('A great place for families.')).includes('prohibited_term'));
     assert.ok(codes({ ...good, letter: { ...good.letter, signature: ['Ana Test'] } }).includes('missing_brokerage'));
+  });
+
+  it('addresses the letter to the person on the register record, and checks the greeting names them', () => {
+    const pad = (last: string, first: string) => `${last.padEnd(20)}${first.padEnd(14)}`;
+    const contact = contactOnRecord({
+      officers: [
+        { title: 'AMBR', type: 'company', name: 'EXAMPLE PARENT LLC' },
+        { title: 'P', type: 'person', name: `${pad('ROE', 'RICHARD')}A` },
+        { title: 'MGR', type: 'person', name: pad('DOE', 'JANE') },
+      ],
+    });
+    assert.equal(contact?.name.display, 'Jane Doe', 'a manager before a president; companies never');
+    assert.equal(contact?.title, 'Manager');
+    const named = buyerFacts(profile, agent, contact);
+    assert.deepEqual(named.filter((f) => f.key.startsWith('company.contact')).map((f) => [f.key, f.value]), [
+      ['company.contact', 'Jane Doe'],
+      ['company.contact_title', 'Manager'],
+    ]);
+    assert.deepEqual(buyerFacts(profile, agent, null), facts, 'no person: addressed to the company as before');
+    assert.match(buyerLetterPrompt(named).user, /company\.contact \(Person the letter is addressed to\): Jane Doe/);
+    assert.match(buyerLetterPrompt(named).system, /greet them by their full name/);
+    assert.deepEqual(codes(good, named), ['greeting'], 'greeting the company team misses the person');
+    assert.deepEqual(codes({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,' } }, named), []);
+    assert.equal(BUYER_LETTER_PROMPT_VERSION, 'buyer-intro-v2');
   });
 
   it('looks up the rules a campaign was written under', () => {

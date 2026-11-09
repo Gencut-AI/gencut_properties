@@ -18,15 +18,20 @@ import {
   draftText,
   normalizeText,
 } from '../campaign/draft.ts';
+import type { RecordContact } from '../sources/fl-sunbiz.ts';
 import type { BuyerProfile } from './buyer-radar.ts';
 
-export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v1';
+export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v2';
 
 /** ZIP codes and home types passed to the writer: the company's top few, by purchases. */
 const MAX_PATTERN_ITEMS = 3;
 
-/** The only facts a buyer letter may state. */
-export function buyerFacts(profile: BuyerProfile, agent: AgentForDraft): CampaignFact[] {
+/**
+ * The only facts a buyer letter may state. `contact` is the person on the
+ * company's register record the letter is addressed to (D-030); without one the
+ * letter is addressed to the company.
+ */
+export function buyerFacts(profile: BuyerProfile, agent: AgentForDraft, contact: RecordContact | null = null): CampaignFact[] {
   const f: CampaignFact[] = [];
   const pr = (key: string, label: string, value: string) => {
     if (value.trim()) f.push({ key, label, value: value.trim(), source: 'public_record' });
@@ -35,6 +40,10 @@ export function buyerFacts(profile: BuyerProfile, agent: AgentForDraft): Campaig
     if (value?.trim()) f.push({ key, label, value: value.trim(), source: 'agent_profile' });
   };
   pr('company.name', 'Company', profile.name);
+  if (contact?.name.structured) {
+    pr('company.contact', 'Person the letter is addressed to', [contact.name.first, contact.name.last].join(' '));
+    pr('company.contact_title', 'Their title at the company', contact.title);
+  }
   pr('company.zips', 'ZIP codes it has bought in', profile.zips.slice(0, MAX_PATTERN_ITEMS).map((z) => z.zip).join(', '));
   pr('company.home_types', 'Home types it has bought', profile.homeTypes.slice(0, MAX_PATTERN_ITEMS).map((t) => t.label.toLowerCase()).join(', '));
   ap('agent.name', 'Agent name', agent.licenseeName);
@@ -56,8 +65,9 @@ Rules you must follow:
 5. Fair housing: never refer to race, colour, religion, national origin, sex, disability, familial status, age, or any proxy for them, and never describe who should or should not live in a home or neighbourhood.
 6. No pressure or guarantees: no "act now", no guaranteed returns, no claims that the market is about to change.
 7. Tone: brief, professional, business-to-business. The letter is under 180 words, 2 or 3 short paragraphs, ending with one low-pressure invitation to talk.
-8. The signature must include the agent's name and the brokerage name exactly as provided, and the license number if provided.
-9. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the company replies with an email). 2 or 3 steps, days counted from the first letter.
+8. If a person the letter is addressed to is provided (company.contact), greet them by their full name ("Dear Jane Doe,") and write to them as someone at the company. Never say where their name came from. Without one, address the company.
+9. The signature must include the agent's name and the brokerage name exactly as provided, and the license number if provided.
+10. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the company replies with an email). 2 or 3 steps, days counted from the first letter.
 
 Answer with a single JSON object and nothing else, in this shape:
 {"title": string, "strategy": {"summary": string, "angle": string, "reasons": [{"text": string, "factKeys": [string]}]}, "letter": {"greeting": string, "paragraphs": [string], "closing": string, "signature": [string]}, "followUp": [{"day": number, "channel": "mail" | "call_task" | "email", "action": string}], "factsUsed": [string]}
@@ -149,6 +159,14 @@ export function checkBuyerLetter(d: CampaignDraft, facts: readonly CampaignFact[
   // The agent's office address, in the signature, is the one street address a letter may carry.
   if (STREET.test(letter)) problems.push({ code: 'reveals_subject', message: 'The letter must not contain a street address.' });
   if (COUNT.test(letter)) problems.push({ code: 'reveals_subject', message: 'The letter must not count the homes the company owns or bought.' });
+
+  const contact = facts.find((f) => f.key === 'company.contact')?.value;
+  if (contact) {
+    const last = contact.split(' ').at(-1) ?? contact;
+    if (!normalizeText(d.letter.greeting).includes(normalizeText(last))) {
+      problems.push({ code: 'greeting', message: `Greet ${contact} by name: the letter is addressed to them.` });
+    }
+  }
 
   const words = [...d.letter.paragraphs, d.letter.greeting, d.letter.closing].join(' ').split(/\s+/).filter(Boolean).length;
   if (words > 220) problems.push({ code: 'too_long', message: `The letter has ${words} words; keep it under 180.` });

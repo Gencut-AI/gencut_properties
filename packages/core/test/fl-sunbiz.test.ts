@@ -3,7 +3,10 @@ import { describe, it } from 'node:test';
 import {
   type CompanyRecord,
   SUNBIZ_RECORD_LENGTH,
+  contactOnRecord,
   filingTypeLabel,
+  nameCase,
+  officerName,
   officerTitleLabel,
   ownerKey,
   parseSunbizRecord,
@@ -122,7 +125,28 @@ describe('Florida company register (Sunbiz)', () => {
 
   it('lists the people on a record, leaving out companies that hold an office', () => {
     const r = parseSunbizRecord(line({ doc: 'L1', name: 'SAMPLE LLC', officers: [{ title: 'AMBR', type: 'C', name: 'PARENT LLC' }, { title: 'MGR', type: 'P', name: 'DOE JANE' }] }))!;
-    assert.deepEqual(peopleOnRecord(r), [{ name: 'DOE JANE', title: 'Manager' }]);
+    assert.deepEqual(peopleOnRecord(r), [{ name: 'Doe Jane', title: 'Manager' }], 'a name outside the slots is shown as filed, in normal case');
+  });
+});
+
+describe('People’s names in the register', () => {
+  const slots = (last: string, first: string, rest = '') => `${last.padEnd(20)}${first.padEnd(14)}${rest}`;
+  it('reads last, first, middle and suffix from their slots, in normal case', () => {
+    assert.deepEqual(officerName(slots('DOE', 'JANE', 'A')), { first: 'Jane', middle: 'A', last: 'Doe', suffix: '', display: 'Jane A Doe', structured: true });
+    const long = officerName(slots("MCDONALD-O'BRIEN", 'MARY ANN', ' JR'));
+    assert.deepEqual([long.first, long.last, long.suffix, long.display], ['Mary Ann', "McDonald-O'Brien", 'Jr', "Mary Ann McDonald-O'Brien Jr"]);
+    assert.equal(officerName(slots('DE LA CRUZ', 'ANA')).display, 'Ana De La Cruz');
+  });
+  it('does not guess the parts of a name typed freely', () => {
+    assert.deepEqual(officerName('DOE JANE'), { first: '', middle: '', last: '', suffix: '', display: 'Doe Jane', structured: false });
+    assert.equal(officerName('Jane   Doe').structured, false);
+    assert.equal(nameCase('MCKAY'), 'McKay');
+  });
+  it('picks the person a letter is addressed to: a manager or member first, people only, slotted names only', () => {
+    assert.equal(contactOnRecord({ officers: [{ title: 'MGR', type: 'person', name: 'DOE JANE' }] }), null, 'parts unknown: no contact');
+    const c = contactOnRecord({ officers: [{ title: 'VP', type: 'person', name: slots('ROE', 'RICHARD') }, { title: 'AMBR', type: 'person', name: slots('POE', 'EDGAR') }] });
+    assert.deepEqual([c?.name.display, c?.title], ['Edgar Poe', 'Authorized member']);
+    assert.equal(contactOnRecord({ officers: [] }), null);
   });
 });
 

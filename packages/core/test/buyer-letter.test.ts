@@ -88,6 +88,15 @@ describe('Buyer introduction letters', () => {
     assert.ok(codes(withParagraph('You paid $450,000 in 33180.')).includes('unsupported_figure'), 'a price is not a fact');
   });
 
+  it('allows the county’s home-type label, and still catches a count next to it', () => {
+    const multi = buyerProfile([tx(1, { useCode: '008', units: 6 }), tx(2, { useCode: '008', units: 4 }), tx(3, { situs: { address: '9 SAMPLE ST', city: 'MIAMI', zip: '33160' } })]);
+    const f = buyerFacts(multi, agent);
+    assert.match(f.find((x) => x.key === 'company.home_types')?.value ?? '', /multifamily, under 10 units/);
+    assert.deepEqual(codes(withParagraph('I work with owners of multifamily buildings under 10 units in 33180.'), f), []);
+    assert.deepEqual(codes(withParagraph('I work with owners of small multifamily (under 10 units) and condominium buildings in 33180.'), f), []);
+    assert.ok(codes(withParagraph('I see you hold 3 homes and some multifamily, under 10 units, in 33180.'), f).includes('reveals_subject'));
+  });
+
   it('does not flag the words in a company\'s own name', () => {
     const named = (name: string) => buyerFacts({ ...profile, name }, agent);
     for (const name of ['WHITE SAMPLE ACQUISITIONS LLC', '1236 NE 109 STREET PROPERTY', 'SENIOR SAMPLE PURCHASES INC']) {

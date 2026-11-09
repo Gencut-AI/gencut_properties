@@ -328,3 +328,9 @@ can give exact purchase dates.
 **What happened:** D-030 renamed the buyer letter rules `buyer-intro-v2`. A buyer letter stored under `buyer-intro-v1` that had failed on 29 Oct could no longer be retried ("which GenCut no longer supports"), and the one v1 letter in review could not be edited or rewritten and was shown as a seller letter.
 
 **Decision:** retired versions map to the kind that now reads them (`RETIRED_VERSIONS`); `buyer-intro-v1` maps to `buyer-intro-v2`, whose only addition, the greeting rule, applies only when `company.contact` is a fact, which v1 campaigns never have. "Try again" on a failed draft re-plans it from its opportunity under the current version, the agent's current profile and the register as stored now (so a newly found contact is used); a failed draft has no letter to keep. AGENTS.md now says how to bump a campaign prompt version.
+
+## D-032 · 2026-11-09 · The home-type label is not a count
+
+**What happened:** the retried Barboza letter failed twice with "The letter must not count the homes the company owns or bought." The writer is given the county's home-type label as a fact ("multifamily, under 10 units"), and the count check (a number or "several" before homes, units, properties…) rejected "10 units" in it. Any buyer of small multifamily buildings would fail the same way.
+
+**Decision:** before the count check, the home-type labels given as facts are set aside, as the company's own name already is. A count written next to them ("you hold 3 homes") is still caught. Only the check changed, so the prompt version stays `buyer-intro-v2`.

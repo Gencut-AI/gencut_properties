@@ -322,3 +322,9 @@ can give exact purchase dates.
 **Names:** the register's 42-character officer name holds last name (20), first name (14), middle initial and suffix in fixed slots (13,285 of 13,424 people on the matched records fit them). Names are shown in normal case ("Jane A Doe", "McKay"). A name typed freely outside the slots is shown as filed and never used as a contact, since its first and last names cannot be told apart.
 
 **Mail to:** a company campaign shows a "Mail to" block with a Copy button: the company, an "Attn: Jane Doe, Manager" line, and the register's mailing address when the match is exact and the company active; otherwise no Attn line and the tax roll's mailing address. A shortened-name match, an inactive company or no match keeps the letter addressed to the company team, as before.
+
+## D-031 · 2026-11-09 · Prompt changes never strand stored campaigns; a retry is written under current rules
+
+**What happened:** D-030 renamed the buyer letter rules `buyer-intro-v2`. A buyer letter stored under `buyer-intro-v1` that had failed on 29 Oct could no longer be retried ("which GenCut no longer supports"), and the one v1 letter in review could not be edited or rewritten and was shown as a seller letter.
+
+**Decision:** retired versions map to the kind that now reads them (`RETIRED_VERSIONS`); `buyer-intro-v1` maps to `buyer-intro-v2`, whose only addition, the greeting rule, applies only when `company.contact` is a fact, which v1 campaigns never have. "Try again" on a failed draft re-plans it from its opportunity under the current version, the agent's current profile and the register as stored now (so a newly found contact is used); a failed draft has no letter to keep. AGENTS.md now says how to bump a campaign prompt version.

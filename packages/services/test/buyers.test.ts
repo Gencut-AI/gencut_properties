@@ -36,6 +36,7 @@ import {
   workspacesToScoreBuyers,
   getCampaignMailTo,
   storeCompanyRecords,
+  retryCampaignDraft,
 } from '../src/index.ts';
 
 // Synthetic companies and sales. Not real owners, parcels or prices.
@@ -271,6 +272,43 @@ describe('Buyer Radar services', () => {
     assert.equal(mail?.attention, null);
     assert.equal(mail?.source, 'tax_roll');
     assert.equal(mail?.company, 'BETA HOLDINGS INC');
+  });
+
+  it('retries a failed buyer letter under the current rules, and keeps letters written under retired rules editable', async () => {
+    const { u, workspaceId } = await workspace();
+    await scoreWorkspaceBuyers(sql, workspaceId);
+    const alpha = (await listBuyers(sql, u, workspaceId)).find((b) => b.profile.ownerKey === ownerKey('Alpha Homes, L.L.C.'));
+    assert.ok(alpha);
+    const good = letter('I work with single family owners in 33180 and would be glad to share opportunities there as they come up.');
+
+    // A draft that failed before the greeting rule existed: stored under buyer-intro-v1, with no contact.
+    const failed = await startCampaignDraft(sql, u, workspaceId, alpha.id);
+    await sql`UPDATE campaigns SET status = 'generation_failed', prompt_version = 'buyer-intro-v1', error = 'The draft did not pass GenCut''s checks.' WHERE id = ${failed.campaignId}`;
+    // The register now names a manager.
+    const place = { address1: '100 EXAMPLE BLVD', address2: '', city: 'MIAMI', state: 'FL', zip: '33131', country: 'US' };
+    await storeCompanyRecords(sql, 'register@test', '2026-10-07', [{
+      state: 'FL', documentNumber: 'L9', name: 'ALPHA HOMES, L.L.C.', nameKey: ownerKey('ALPHA HOMES, L.L.C.'), status: 'active', filingType: 'FLAL',
+      principal: place, mailing: place, filedOn: '2019-03-15', lastTransactionOn: '2026-04-01', reportYears: [2026], registeredAgent: null,
+      moreOfficers: false, officers: [{ title: 'MGR', type: 'person', name: `${'DOE'.padEnd(20)}JANE` }],
+    }]);
+
+    await retryCampaignDraft(sql, u, workspaceId, failed.campaignId);
+    const [row] = await sql<{ status: string; prompt_version: string; facts: { key: string; value: string }[]; error: string | null }[]>`
+      SELECT status, prompt_version, facts, error FROM campaigns WHERE id = ${failed.campaignId}`;
+    assert.equal(row?.status, 'generating');
+    assert.equal(row?.prompt_version, BUYER_LETTER_PROMPT_VERSION, 'written again under the current rules');
+    assert.equal(row?.error, null);
+    assert.equal(row?.facts.find((f) => f.key === 'company.contact')?.value, 'Jane Doe', 'and with the contact found since');
+    const provider = new RecordedProvider([reply({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,' } })]);
+    assert.equal(await generateCampaignDraft(sql, failed.campaignId, new ModelRouter({ providers: { anthropic: provider } })), 'review');
+
+    // A letter in review written under buyer-intro-v1 is still a buyer letter, and can be edited.
+    const old = failed;
+    await sql`UPDATE campaigns SET prompt_version = 'buyer-intro-v1' WHERE id = ${old.campaignId}`;
+    const c = await getCampaign(sql, u, workspaceId, old.campaignId);
+    assert.equal(c.audience, 'company');
+    const edited = await updateCampaignLetter(sql, u, workspaceId, old.campaignId, { ...c.draft!.letter, closing: 'Warm regards,' });
+    assert.equal(edited.letter.closing, 'Warm regards,');
   });
 
   it('keeps workspaces apart', async () => {

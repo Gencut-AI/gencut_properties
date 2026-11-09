@@ -13,6 +13,7 @@ import {
   buyerProfile,
   checkBuyerLetter,
   contactOnRecord,
+  RETIRED_VERSIONS,
   draftKind,
 } from '../src/index.ts';
 
@@ -129,6 +130,8 @@ describe('Buyer introduction letters', () => {
     assert.equal(draftKind(CAMPAIGN_PROMPT_VERSION), SELLER_DRAFT);
     assert.equal(draftKind(null), SELLER_DRAFT, 'campaigns from before versions were stored');
     assert.equal(draftKind('campaign-draft-v0'), null);
+    assert.equal(draftKind('buyer-intro-v1'), BUYER_DRAFT, 'letters written before the greeting rule stay readable');
+    for (const [old, now] of Object.entries(RETIRED_VERSIONS)) assert.equal(draftKind(old), draftKind(now), old);
     assert.equal(BUYER_DRAFT.audience, 'company');
   });
 });

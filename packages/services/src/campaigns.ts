@@ -71,6 +71,38 @@ async function hasPermission(db: Db, workspaceId: string, kind: 'generate' | 'di
   return row?.ok === true;
 }
 
+type DraftOpportunity = { id: string; type: string; payload: StoredParcel | null; evidence: { profile: BuyerProfile } | null };
+type DraftPlan = { kind: DraftKind; facts: CampaignFact[]; title: string; objective: string };
+
+/**
+ * The rules, facts and title a draft for this opportunity is written with,
+ * under the current prompt versions, the agent's current profile and the
+ * company register as stored now. Used to start a draft and to retry a failed one.
+ */
+async function planDraft(tx: Db, workspaceId: string, opp: DraftOpportunity): Promise<DraftPlan> {
+  const [profile] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
+  if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
+  if (opp.type === 'investor_buyer') {
+    if (!opp.evidence?.profile) throw new Error(`buyer opportunity ${opp.id} has no profile`);
+    // Address the letter to a person on the company's register record, only when the record matched the name exactly.
+    const registry = await companyRecordFor(tx, opp.evidence.profile.ownerKey, [opp.evidence.profile.name]);
+    const contact = registry?.match === 'exact' && registry.record.status === 'active' ? contactOnRecord(registry.record) : null;
+    return {
+      kind: BUYER_DRAFT,
+      facts: buyerFacts(opp.evidence.profile, agentFrom(profile), contact),
+      title: `Introduction to ${opp.evidence.profile.name}`,
+      objective: 'Introduce the agent to the company by direct mail and offer to share opportunities that fit its focus.',
+    };
+  }
+  if (!opp.payload) throw new Error(`seller opportunity ${opp.id} has no source record`);
+  return {
+    kind: SELLER_DRAFT,
+    facts: campaignFacts(opp.payload, agentFrom(profile)),
+    title: `Introduction to the owner of ${opp.payload.situs.address || `parcel ${opp.payload.parcelId}`}`,
+    objective: 'Introduce the agent to the owner by direct mail and invite a conversation.',
+  };
+}
+
 /**
  * Start a draft for an opportunity: a letter to a property's owner for a
  * potential seller, or an introduction to a company for an investor buyer.
@@ -101,29 +133,7 @@ export async function startCampaignDraft(
     `;
     if (existing) return { campaignId: existing.id, created: false };
 
-    const [profile] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
-    if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
-    let plan: { kind: DraftKind; facts: CampaignFact[]; title: string; objective: string };
-    if (opp.type === 'investor_buyer') {
-      if (!opp.evidence?.profile) throw new Error(`buyer opportunity ${opp.id} has no profile`);
-      // Address the letter to a person on the company's register record, only when the record matched the name exactly.
-      const registry = await companyRecordFor(tx, opp.evidence.profile.ownerKey, [opp.evidence.profile.name]);
-      const contact = registry?.match === 'exact' && registry.record.status === 'active' ? contactOnRecord(registry.record) : null;
-      plan = {
-        kind: BUYER_DRAFT,
-        facts: buyerFacts(opp.evidence.profile, agentFrom(profile), contact),
-        title: `Introduction to ${opp.evidence.profile.name}`,
-        objective: 'Introduce the agent to the company by direct mail and offer to share opportunities that fit its focus.',
-      };
-    } else {
-      if (!opp.payload) throw new Error(`seller opportunity ${opp.id} has no source record`);
-      plan = {
-        kind: SELLER_DRAFT,
-        facts: campaignFacts(opp.payload, agentFrom(profile)),
-        title: `Introduction to the owner of ${opp.payload.situs.address || `parcel ${opp.payload.parcelId}`}`,
-        objective: 'Introduce the agent to the owner by direct mail and invite a conversation.',
-      };
-    }
+    const plan = await planDraft(tx, workspaceId, opp);
     const [c] = await tx<{ id: string }[]>`
       INSERT INTO campaigns (workspace_id, opportunity_id, title, objective, status, facts, prompt_version, created_by)
       VALUES (${workspaceId}, ${opportunityId}, ${plan.title}, ${plan.objective},
@@ -256,8 +266,19 @@ export async function retryCampaignDraft(sql: Sql, ctx: RequestContext, workspac
     const row = await campaignRow(tx, workspaceId, campaignId);
     const check = checkCampaignTransition(row.status, 'generating');
     if (!check.ok) throw new ServiceError('invalid', 'Only a failed draft can be retried.');
+    // A failed draft has nothing to keep: write it again under the current rules, profile and register record.
+    const [opp] = row.opportunity_id
+      ? await tx<DraftOpportunity[]>`
+          SELECT o.id, o.type, r.payload, o.evidence FROM opportunities o LEFT JOIN source_records r ON r.id = o.source_record_id
+          WHERE o.workspace_id = ${workspaceId} AND o.id = ${row.opportunity_id}
+        `
+      : [];
+    const plan = opp && (opp.type === 'potential_seller' || opp.type === 'investor_buyer') ? await planDraft(tx, workspaceId, opp) : null;
+    if (!plan && !draftKind(row.prompt_version)) throw new ServiceError('invalid', 'This campaign can no longer be written. Start a new campaign.');
     await tx`
-      UPDATE campaigns SET status = 'generating', generation_started_at = NULL, problems = NULL, error = NULL, updated_at = now()
+      UPDATE campaigns SET status = 'generating', generation_started_at = NULL, problems = NULL, error = NULL, updated_at = now(),
+        facts = COALESCE(${plan ? tx.json(plan.facts as never) : null}::jsonb, facts),
+        prompt_version = COALESCE(${plan?.kind.version ?? null}, prompt_version)
       WHERE id = ${campaignId}
     `;
     await recordAudit(tx, {

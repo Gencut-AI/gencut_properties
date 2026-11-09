@@ -69,6 +69,14 @@ TypeScript runs directly on Node ≥ 22.18 (type stripping). Therefore:
 8. **Agents never modify production code, prompts, permissions or policies.** Improvements
    go through the experiment registry and human approval.
 
+## Changing a campaign prompt
+
+Campaigns store the prompt version they were written under, and `draftKind` reads it back
+for editing, rewriting and re-checking. When you bump a version, keep every stored version
+readable: map the old one in `RETIRED_VERSIONS` (`packages/core/src/campaign/draft-kinds.ts`)
+when the new rules only add what its stored facts never trigger, or keep the old kind
+otherwise. Retrying a failed draft re-plans it under the current version (D-031).
+
 ## Changing the schema
 
 Add a new numbered pair `NNNN_name.up.sql` / `NNNN_name.down.sql`; never edit an applied

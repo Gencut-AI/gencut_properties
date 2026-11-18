@@ -340,3 +340,9 @@ can give exact purchase dates.
 **What happened:** the first letter to a named contact (Barboza Investment Group) read "I am writing to introduce myself to you as President of Barboza Investment Group Corp.", which reads as if the agent were the President.
 
 **Decision:** prompt `buyer-intro-v3` tells the writer the contact's title is theirs: attach it to them ("in your role as President"), never to a sentence about the agent. A check (`readsAsAgentsTitle`) flags a sentence about the agent ("I am…", "introduce myself") that carries the title after "as", unless it is explicitly theirs ("your role / capacity / position"); the draft is retried with the problem named. `buyer-intro-v1` and `-v2` map to v3 (`RETIRED_VERSIONS`): v3 only tightens wording.
+
+## D-034 · 2026-11-18 · Sign-in links work on any device; auth email goes through Resend
+
+**What happened:** a new user asked for a sign-in link and opened it on an iPhone; it failed twice. The project still used Supabase's default email, whose link is a PKCE code that only the browser that asked for it can complete. GenCut's `/auth/confirm` already accepted token-hash links, but the templates were never switched, and on Supabase's built-in sender they cannot be edited.
+
+**Decision (Paul, 18 Nov):** GenCut Dev sends auth email through Resend SMTP from `noreply@mail.gencut.ai` (the domain already verified for outreach), and the Magic link and Confirm sign up templates link to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/home`. Verified: a link requested on a laptop signed in on a phone. The sign-in page no longer says to open the link in the same browser. Setup steps are in docs/development.md. The SMTP username must be `resend` in lowercase; a capitalised one fails every send with "unexpected_failure".

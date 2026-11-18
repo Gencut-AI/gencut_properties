@@ -41,3 +41,24 @@ Branch `m<milestone>/<topic>` → small commits → `pnpm check` green → pull 
 
 Never commit real values. `.env.example` lists the variable names. Production values live
 in Netlify, Supabase and GitHub secret stores. `pnpm lint` and CI gitleaks both scan.
+
+## Sign-in email (Supabase Auth)
+
+Sign-in is an emailed link (`signInWithOtp`, `app/sign-in/actions.ts`), completed by
+`app/auth/confirm/route.ts`. The route accepts the token-hash link, which works in any browser,
+and the PKCE code link, which works only in the browser that asked for it. Every Supabase
+project that runs this app needs the setup below, or a link opened on another device fails
+(D-034).
+
+1. **Authentication → Emails → SMTP Settings:** custom SMTP through Resend (Supabase's built-in
+   sender allows only a few emails an hour and locks the templates).
+   Host `smtp.resend.com`, port `465`, username `resend` (lowercase), password: a Resend API key
+   with sending access to the verified domain; sender `noreply@mail.gencut.ai`.
+2. **Authentication → Emails → Templates:** in both **Magic link or OTP** and **Confirm sign up**,
+   the link is
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/home`.
+3. **Authentication → URL Configuration:** Site URL is the app's public address
+   (`https://gencutv1.netlify.app`); redirect URLs cover it, deploy previews and
+   `http://localhost:3000/**`.
+
+Check: ask for a link on one device and open it on another; it should land on Home.

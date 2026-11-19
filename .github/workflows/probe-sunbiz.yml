@@ -4,26 +4,29 @@ permissions: { contents: read }
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - run: sudo apt-get install -y -qq lftp > /dev/null 2>&1
-      - name: Download and profile the quarterly corporate file (counts only, no names)
+      - name: Profile the daily corporate filings (counts only, no names)
         env:
-          SFTP_PASS: PubAccess1845!
+          SFTP_PASS: PubAccess1845! # gitleaks:allow (published public login)
         run: |
-          start=$(date +%s)
-          timeout 1200 lftp -u "Public,$SFTP_PASS" -e "set sftp:auto-confirm yes; set net:timeout 30; get doc/quarterly/cor/cordata.zip -o cordata.zip; bye" sftp://sftp.floridados.gov
-          echo "DOWNLOAD_SECONDS $(( $(date +%s) - start ))"; ls -l cordata.zip
-          unzip -l cordata.zip | tail -15
-          F=$(unzip -Z1 cordata.zip | head -1); echo "FIRST_MEMBER $F"
-          start=$(date +%s); echo "LINES_ALL $(unzip -p cordata.zip | wc -l)"; echo "SCAN_SECONDS $(( $(date +%s) - start ))"
-          unzip -p cordata.zip "$F" | awk '{print length($0)}' | sort | uniq -c | sort -rn | head -3 | sed 's/^/LEN /'
-          unzip -p cordata.zip "$F" | cut -c205 | sort | uniq -c | sed 's/^/STATUS /'
-          unzip -p cordata.zip "$F" | cut -c206-220 | sort | uniq -c | sort -rn | head -10 | sed 's/^/TYPE /'
-          unzip -p cordata.zip "$F" | cut -c669-672 | sort | uniq -c | sort -rn | head -12 | sed 's/^/TITLE1 /'
-          unzip -p cordata.zip "$F" | cut -c673 | sort | uniq -c | sed 's/^/OTYPE1 /'
-          unzip -p cordata.zip "$F" | cut -c473-480 | sort | tail -1 | sed 's/^/MAX_FILEDATE /'
-          unzip -p cordata.zip "$F" | cut -c496-503 | sort | tail -1 | sed 's/^/MAX_LASTTX /'
-          unzip -p cordata.zip "$F" | cut -c13-204 | grep -c " LLC" | sed 's/^/LLC_NAMES /'
-          unzip -p cordata.zip "$F" | file - | sed 's/^/ENCODING /'
-          unzip -p cordata.zip "$F" | head -2 | cut -c1-12,205-220,473-480,506-544 | sed 's/^/SAMPLE /'
+          L() { lftp -u "Public,$SFTP_PASS" -e "set sftp:auto-confirm yes; set net:timeout 30; $1; bye" sftp://sftp.floridados.gov; }
+          L "cls -l doc/cor" | grep -E 'c\.txt' | tail -12 | sed 's/^/LIST /'
+          L "cls -1 doc/cor" | grep -E '[0-9]{8}c\.txt$' | sort | tail -10 > recent.txt
+          echo "FILES_LISTED $(L 'cls -1 doc/cor' | grep -cE '[0-9]{8}c\.txt$')"
+          echo "OLDEST $(L 'cls -1 doc/cor' | grep -E '[0-9]{8}c\.txt$' | sort | head -1)"
+          for f in $(cat recent.txt); do L "get doc/cor/$(basename $f) -o d.txt" >/dev/null 2>&1 || continue
+            n=$(wc -l < d.txt)
+            dade=$(cut -c335-339 d.txt | grep -cE '^33(0|1)[0-9]{2}')
+            dadeLLC=$(paste -d'|' <(cut -c335-339 d.txt) <(cut -c206-220 d.txt) | grep -cE '^33(0|1)[0-9]{2}\|FLAL')
+            prop=$(paste -d'|' <(cut -c335-339 d.txt) <(cut -c13-204 d.txt) | grep -E '^33(0|1)[0-9]{2}\|' | grep -ciE 'propert|realty|homes|holdings|invest|capital|real estate|acquisit|rental|estates')
+            people=$(paste -d'|' <(cut -c335-339 d.txt) <(cut -c673) <(cut -c673 d.txt) | grep -cE '^33(0|1)[0-9]{2}\|')
+            echo "DAY $(basename $f) lines=$n dade=$dade dade_llc=$dadeLLC dade_property_names=$prop"
+          done
+          awk '{print length($0)}' d.txt | sort | uniq -c | sort -rn | head -3 | sed 's/^/LEN /'
+          cut -c205 d.txt | sort | uniq -c | sed 's/^/STATUS /'
+          cut -c206-220 d.txt | sort | uniq -c | sort -rn | head -6 | sed 's/^/TYPE /'
+          cut -c473-480 d.txt | sort | uniq -c | sort -rn | head -3 | sed 's/^/FILED /'
+          cut -c669-672 d.txt | sort | uniq -c | sort -rn | head -6 | sed 's/^/TITLE1 /'
+          cut -c673 d.txt | sort | uniq -c | sed 's/^/OTYPE1 /'

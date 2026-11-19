@@ -67,7 +67,7 @@ const draft = (n: number): CampaignDraft => ({
     greeting: `Dear Owner of ${n} Example Way,`,
     paragraphs: ['I work with owners of single-family homes, and your 1957 home stood out to me.'],
     closing: 'Warm regards,',
-    signature: ['Ana Test', 'Example Bay Realty LLC'],
+    signature: ['Ana Test', 'Example Bay Realty LLC', '(305) 555-0123'],
   },
   followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter.' }],
   factsUsed: ['property.year_built'],
@@ -148,7 +148,7 @@ describe('Film Crew', () => {
     const u = user();
     const { workspaceId } = await ensureWorkspace(sql, u);
     await saveBusinessProfile(sql, u, workspaceId, {
-      licenseeName: 'Ana Test', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: [zip], propertyUses: ['single_family'],
+      licenseeName: 'Ana Test', phone: '(305) 555-0123', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: [zip], propertyUses: ['single_family'],
     });
     await claimCoverage(sql, '23', [zip]);
     await storeParcels(sql, roll.fileDate, [parcel(Number(zip), zip)]);

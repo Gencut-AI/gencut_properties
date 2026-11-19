@@ -132,7 +132,8 @@ describe('Buyer introduction letters', () => {
     assert.match(buyerLetterPrompt(named).system, /greet them by their full name/);
     assert.deepEqual(codes(good, named), ['greeting'], 'greeting the company team misses the person');
     assert.deepEqual(codes({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,' } }, named), []);
-    assert.equal(BUYER_LETTER_PROMPT_VERSION, 'buyer-intro-v3');
+    assert.equal(BUYER_LETTER_PROMPT_VERSION, 'buyer-intro-v4');
+    assert.equal(draftKind('buyer-intro-v3'), BUYER_DRAFT);
     assert.match(buyerLetterPrompt(named).system, /never to a sentence about yourself/);
     const p1 = (p: string) => ({ ...good, letter: { ...good.letter, greeting: 'Dear Jane Doe,', paragraphs: [p, ...good.letter.paragraphs.slice(1)] } });
     assert.deepEqual(codes(p1('My name is Ana Test, and I am writing to introduce myself to you as Manager of Bayview Sample Holdings LLC.'), named), ['greeting'], 'reads as the agent\'s title');

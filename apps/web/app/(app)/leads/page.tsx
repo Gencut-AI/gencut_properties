@@ -281,7 +281,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             <span className="text-sm text-glass-deep">contact first</span>
           </div>
           {shortlist.length === 0 ? (
-            <p className="text-glass-deep">Every lead here already has a campaign.</p>
+            <p className="text-glass-deep">{leads.length === 0 ? 'Your ranked shortlist appears here after the first run.' : 'Every lead here already has a campaign.'}</p>
           ) : (
             <ol className="flex flex-col gap-2">
               {shortlist.map((l, i) => (

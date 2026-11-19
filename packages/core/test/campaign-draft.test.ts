@@ -5,8 +5,14 @@ import {
   type CampaignDraft,
   type StoredParcel,
   campaignFacts,
+  CAMPAIGN_PROMPT_VERSION,
+  MIN_RECENT_SALES,
+  type RollSale,
+  SELLER_DRAFT,
   campaignPrompt,
   checkCampaignDraft,
+  draftKind,
+  recentSalesSummary,
   costUsd,
   extractJson,
   parseCampaignDraft,
@@ -110,6 +116,43 @@ describe('campaign drafts', () => {
   it('requires the brokerage name in the signature and known fact keys', () => {
     assert.ok(problems({ ...good, letter: { ...good.letter, signature: ['Ana Test'] } }).includes('missing_brokerage'));
     assert.ok(problems({ ...good, factsUsed: ['owner.net_worth'] }).includes('unknown_fact'));
+  });
+
+  it('v2: signs with a way to reach the agent when the profile has one, and only then', () => {
+    assert.equal(CAMPAIGN_PROMPT_VERSION, 'campaign-draft-v2');
+    assert.equal(draftKind('campaign-draft-v1'), SELLER_DRAFT, 'letters written under v1 stay editable');
+    const reachable = campaignFacts(parcel, { ...agent, phone: '(305) 555-0123', email: 'ana@example.com' });
+    assert.deepEqual(reachable.filter((f) => f.key.startsWith('agent.p') || f.key === 'agent.email').map((f) => [f.key, f.value]), [
+      ['agent.phone', '(305) 555-0123'],
+      ['agent.email', 'ana@example.com'],
+    ]);
+    const codes = (d: CampaignDraft) => checkCampaignDraft(d, reachable, agent).map((p) => p.code);
+    assert.ok(codes(good).includes('missing_contact'), 'no phone or email in the signature');
+    assert.deepEqual(codes({ ...good, letter: { ...good.letter, signature: [...good.letter.signature, '305.555.0123'] } }), [], 'the phone, any format');
+    assert.deepEqual(codes({ ...good, letter: { ...good.letter, signature: [...good.letter.signature, 'Ana@Example.com'] } }), [], 'or the email');
+    assert.deepEqual(checkCampaignDraft(good, facts, agent), [], 'no contact facts (a v1 campaign): not required');
+    const { system } = campaignPrompt(reachable);
+    assert.match(system, /reason to reply/);
+    assert.match(system, /phone and email if provided/);
+    assert.match(system, /never tell the owner the property is outside the agent's focus/);
+  });
+
+  it('summarises recent qualified sales of the same kind of home in the ZIP code, leaving out multi-parcel deeds and the owner', () => {
+    const sale = (parcelId: string, year: number, month: number | null, price: number | null, qualificationCode = '01'): RollSale => ({ parcelId, year, month, price, qualificationCode });
+    const sales = [
+      sale('A', 2026, 7, 400_000), sale('B', 2026, 5, 420_000), sale('C', 2026, 1, 380_000), sale('D', 2025, 9, 450_000),
+      sale('E', 2025, 8, 410_000),
+      sale('F', 2025, 7, 999_000), // 12 months before the newest: outside the window
+      sale('G', 2026, 6, 300_000, '11'), // disqualified transfer
+      sale('H', 2026, 6, 2_000_000), sale('I', 2026, 6, 2_000_000), // one deed covering two parcels
+      sale('OWN', 2026, 3, 100_000), // the owner's own sale is never counted
+      sale('J', 2026, 2, 500_000, '01'), sale('K', 2026, null, 500_000),
+    ];
+    assert.equal(recentSalesSummary(sales, '33156', '004', 'OWN'), '6 condominium sales in ZIP 33156 from Aug 2025 to Jul 2026, median price $415,000');
+    assert.equal(recentSalesSummary(sales.slice(0, MIN_RECENT_SALES - 1), '33156', '004', 'OWN'), null, 'too few to say anything');
+    const withSales = campaignFacts(parcel, agent, '6 condominium sales in ZIP 33156 from Aug 2025 to Jul 2026, median price $415,000');
+    const draft: CampaignDraft = { ...good, letter: { ...good.letter, paragraphs: [...good.letter.paragraphs, 'Six nearby sales had a median price of $415,000.'] } };
+    assert.deepEqual(checkCampaignDraft(draft, withSales, agent), [], 'the median may be quoted');
   });
 
   it('parses a model reply strictly', () => {

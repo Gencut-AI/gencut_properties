@@ -228,7 +228,9 @@ export async function workspacesToScore(sql: Sql): Promise<string[]> {
   const rows = await sql<{ workspace_id: string }[]>`
     SELECT d.workspace_id FROM workspace_discovery d
     JOIN business_profiles p ON p.workspace_id = d.workspace_id
-    WHERE (d.status = 'pending' OR (d.status = 'running' AND d.started_at < now() - ${STALE_CLAIM}::interval))
+    WHERE (d.status = 'pending' OR (d.status = 'running' AND d.started_at < now() - ${STALE_CLAIM}::interval)
+           -- A new scoring rule reaches every workspace on the next run, as buyer scoring does.
+           OR (d.status = 'ready' AND d.scoring_version IS DISTINCT FROM ${SCORING_VERSION}))
       AND NOT EXISTS (
         SELECT 1 FROM zip_coverage c
         WHERE p.focus->'zips' @> jsonb_build_array(c.zip) AND c.status IN ('pending', 'importing')

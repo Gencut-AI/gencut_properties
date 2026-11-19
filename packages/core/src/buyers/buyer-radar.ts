@@ -21,7 +21,7 @@ export const OPPORTUNITY_TYPES = ['potential_seller', 'responded_to_ad', 'sphere
 export type OpportunityType = (typeof OPPORTUNITY_TYPES)[number];
 
 /** Version of the buyer rule; recorded on every buyer opportunity and outcome. */
-export const BUYER_SCORING_VERSION = 'buyer-v3';
+export const BUYER_SCORING_VERSION = 'buyer-v4';
 /** A company needs this many qualified purchases (deeds) in the window to be a buyer. */
 export const MIN_BUYER_PURCHASES = 2;
 /** A purchase below this price is treated as a nominal transfer, not a market purchase. */
@@ -253,30 +253,36 @@ const usd = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
  * agent's focus. A ranking, not a probability of buying again. Recency is
  * measured against the roll's file date (`rollDate`, YYYY-MM-DD), not today.
  */
+/**
+ * buyer-v4 (D-035): where a company buys outweighs how much it buys. Buying in
+ * the agent's ZIP codes is worth 25 (+10 when it is half or more of its
+ * purchases); volume is 20/25/30, recency 15/8, an active streak 10. A company
+ * that never bought in the agent's ZIP codes tops out at 70, below a local one.
+ */
 export function scoreBuyer(p: BuyerProfile, focus: AgentFocus, rollDate: string): BuyerScore {
   if (p.purchases < MIN_BUYER_PURCHASES) {
     return { eligible: false, why: `${p.purchases} qualified purchase; a buyer needs ${MIN_BUYER_PURCHASES}.`, version: BUYER_SCORING_VERSION };
   }
   const reasons: BuyerReason[] = [];
   const window = `${monthLabel(p.first.year, p.first.month)} to ${monthLabel(p.latest.year, p.latest.month)}`;
-  const buys = p.purchases >= 5 ? 50 : p.purchases >= 3 ? 40 : 30;
+  const buys = p.purchases >= 5 ? 30 : p.purchases >= 3 ? 25 : 20;
   const parcels = p.parcels > p.purchases ? ` (${p.parcels} parcels, ${p.multiParcelPurchases} of them multi-parcel sales)` : '';
   reasons.push({ code: 'purchases', points: buys, text: `${p.purchases} qualified purchases on the county roll${parcels}, ${window}.` });
 
   const roll = monthIndex(Number(rollDate.slice(0, 4)), Number(rollDate.slice(5, 7)));
   const age = roll - monthIndex(p.latest.year, p.latest.month);
-  if (age <= 6) reasons.push({ code: 'recent', points: 20, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 6 months of the roll.` });
-  else if (age <= 12) reasons.push({ code: 'recent', points: 10, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 12 months of the roll.` });
+  if (age <= 6) reasons.push({ code: 'recent', points: 15, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 6 months of the roll.` });
+  else if (age <= 12) reasons.push({ code: 'recent', points: 8, text: `Latest purchase ${monthLabel(p.latest.year, p.latest.month)}, within 12 months of the roll.` });
   if (p.streak && isActiveBuyer(p, rollDate)) {
     const span = p.streak.from.year === p.streak.to.year && p.streak.from.month === p.streak.to.month
       ? `in ${monthLabel(p.streak.to.year, p.streak.to.month)}`
       : `between ${monthLabel(p.streak.from.year, p.streak.from.month)} and ${monthLabel(p.streak.to.year, p.streak.to.month)}`;
-    reasons.push({ code: 'active', points: 15, text: `Active buyer: ${p.streak.purchases} purchases ${span}. Recent buying on the records, not a confirmed plan to buy.` });
+    reasons.push({ code: 'active', points: 10, text: `Active buyer: ${p.streak.purchases} purchases ${span}. Recent buying on the records, not a confirmed plan to buy.` });
   }
 
   const inFocus = Math.min(p.purchases, p.zips.filter((z) => focus.zips.includes(z.zip)).reduce((a, z) => a + z.count, 0));
   if (inFocus > 0) {
-    reasons.push({ code: 'focus_zip', points: 15, text: `${inFocus} of ${p.purchases} purchases in your ZIP codes.` });
+    reasons.push({ code: 'focus_zip', points: 25, text: `${inFocus} of ${p.purchases} purchases in your ZIP codes.` });
     if (inFocus * 2 >= p.purchases) reasons.push({ code: 'mostly_focus_zip', points: 10, text: 'Half or more of its purchases are in your ZIP codes.' });
   }
   const typeFit = p.homeTypes.filter((t) => matchesPropertyFocus(propertyUseOf(t.useCode), focus.propertyUses));

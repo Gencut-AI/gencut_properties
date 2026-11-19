@@ -346,3 +346,27 @@ can give exact purchase dates.
 **What happened:** a new user asked for a sign-in link and opened it on an iPhone; it failed twice. The project still used Supabase's default email, whose link is a PKCE code that only the browser that asked for it can complete. GenCut's `/auth/confirm` already accepted token-hash links, but the templates were never switched, and on Supabase's built-in sender they cannot be edited.
 
 **Decision (Paul, 18 Nov):** GenCut Dev sends auth email through Resend SMTP from `noreply@mail.gencut.ai` (the domain already verified for outreach), and the Magic link and Confirm sign up templates link to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/home`. Verified: a link requested on a laptop signed in on a phone. The sign-in page no longer says to open the link in the same browser. Setup steps are in docs/development.md. The SMTP username must be `resend` in lowercase; a capitalised one fails every send with "unexpected_failure".
+
+## D-035 · 2026-11-19 · Beta readiness: letters that can be answered, buyers ranked by where they buy
+
+**How found:** a test agent ("Beta Tester", ZIP 33156 and 33143) signed up and went through the product in a real browser on 19 Nov: sign-in, onboarding, discovery (12 minutes; 22,928 homes, 609 qualified, 100 shown; 200 buyers), an opportunity, a campaign draft.
+
+**Findings and decisions**
+- **Letters gave no way to reply.** The profile had no phone, and neither the phone nor the email reached the writer. Profiles now have a phone (migration 0017). Letters get `agent.phone` and the sign-in email of the agent who starts the draft as `agent.email`, and the signature must carry at least one (`missing_contact`), but only when those facts are present, so older campaigns stay editable. The phone in any format is not treated as an ungrounded figure. Home suggests "Add your phone number" when it is missing.
+- **Letters gave no reason to reply** and worked against themselves ("My own focus is family homes…" to a condo owner; "a distinctive home, I'd enjoy learning more about it"). Prompt `campaign-draft-v2`:
+  - one specific, low-pressure offer (a free estimate of what the home could sell for, or a summary of recent sales nearby) and how to reach the agent;
+  - the specialty only when it fits the property;
+  - no remarks about the home being unusual.
+  - It gets a new fact, `market.recent_sales`: qualified sales of the same kind of home in the owner's ZIP code in the 12 months ending with the newest sale, from the whole stored roll. It leaves out multi-parcel deeds and the owner's own parcel, needs at least 5 sales, and reads e.g. "6 condominium sales in ZIP 33156 from Aug 2025 to Jul 2026, median price $415,000".
+  - Buyer letters (`buyer-intro-v4`) get the same contact details and rule.
+  - v1 and buyer v3 map forward (`RETIRED_VERSIONS`).
+- **Buyers were ranked by volume, not by where they buy.** Homebuilders, a hospital and companies that never bought in the agent's ZIP codes scored 95, above local buyers. `buyer-v4` scoring:
+  - buying in the agent's ZIP codes 25, +10 when it is half or more of the company's purchases;
+  - volume 20/25/30, recency 15/8, active streak 10, type 10, price 5.
+  - A company that never bought there tops out at 70.
+- **A 2020 condo scored as long-held** (+10, "assessed at 39% of market value"). `seller-v4`: no tenure points from the assessment gap for homes built in the last 10 years.
+- **Seller scoring now re-runs when its version changes**, as buyer scoring already did, so new rules reach existing workspaces on the next run.
+- **The landing page promised a video** the product does not make. It now describes what GenCut delivers today: buyers as well as sellers, and a social post with a neighborhood picture. The footer links Privacy instead of showing "Database reachable".
+- **The Leads shortlist** said "Every lead here already has a campaign" before any leads existed. It now explains that the shortlist appears after the first run.
+
+**Open:** the Film Crew needs `GEMINI_API_KEY` on Netlify; without it every campaign shows "not set up on this site yet".

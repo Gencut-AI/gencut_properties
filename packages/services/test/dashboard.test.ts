@@ -98,6 +98,7 @@ describe('Agent dashboard', () => {
     const lead = await submitInboundLead(sql, page.slug, { name: 'Sam Sample', email: 'sam@example.com', phone: '', interest: 'selling', zip: '33501', message: '', consent: true }, { source: 'instagram', submitter: 'x'.repeat(64) });
     assert.equal(lead.ok, true);
 
+    await sql`UPDATE business_profiles SET phone = '(305) 555-0123' WHERE workspace_id = ${a.workspaceId}`;
     const da = await getAgentDashboard(sql, a.u, a.workspaceId);
     assert.deepEqual(da.zips, ['33501']);
     assert.equal(da.rollDate, '2026-10-28');
@@ -119,7 +120,7 @@ describe('Agent dashboard', () => {
     assert.equal(db.counts.socialLeads, 0);
     assert.equal(db.counts.sellerLeads, 2, 'its own two parcels');
     // Buyers are ranked county-wide for every agent, so the active buyer is offered here too; no lead page, WhatsApp not linked.
-    assert.deepEqual(db.actions.map((x) => x.kind), ['top_seller', 'top_active_buyer', 'lead_page', 'link_whatsapp']);
+    assert.deepEqual(db.actions.map((x) => x.kind), ['add_phone', 'top_seller', 'top_active_buyer', 'lead_page']);
 
     await sql`INSERT INTO whatsapp_links (user_id, wa_id) VALUES (${b.u.userId}, '13055550199')`;
     assert.equal((await getAgentDashboard(sql, b.u, b.workspaceId)).whatsappLinked, true);

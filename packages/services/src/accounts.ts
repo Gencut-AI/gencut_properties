@@ -80,6 +80,16 @@ export const businessProfileInput = z
       .optional()
       .transform((v) => (v ? v.toUpperCase() : undefined)),
     officeAddress: z.string().trim().max(200).optional().transform((v) => v || undefined),
+    /** For owners to call or text back; letters show it with the sign-in email (D-035). */
+    phone: z
+      .string()
+      .trim()
+      .max(24)
+      .optional()
+      .transform((v) => v || undefined)
+      .refine((v) => v === undefined || (/^\+?[0-9(][0-9 ().-]{6,22}$/.test(v) && v.replace(/\D/g, '').length >= 10), {
+        message: 'Enter a phone number with area code, for example (305) 555-0123.',
+      }),
     market: z.enum(MARKETS.map((m) => m.key) as [MarketKey, ...MarketKey[]], { error: 'Choose your market.' }),
     specialty: z.string().trim().max(120).optional().transform((v) => v || undefined),
     focusZips: z.array(zip).min(1, 'Add at least one ZIP code you work.').max(30, 'Up to 30 ZIP codes.'),
@@ -108,6 +118,7 @@ export interface BusinessProfile {
   readonly brokerageName: string;
   readonly licenseNumber: string | null;
   readonly officeAddress: string | null;
+  readonly phone: string | null;
   readonly market: MarketKey;
   readonly specialty: string | null;
   readonly focusZips: readonly string[];
@@ -124,6 +135,7 @@ interface ProfileRow {
   brokerage_name: string;
   license_number: string | null;
   office_address: string | null;
+  phone: string | null;
   market: MarketKey;
   specialty: string | null;
   focus: {
@@ -143,6 +155,7 @@ function toProfile(r: ProfileRow): BusinessProfile {
     brokerageName: r.brokerage_name,
     licenseNumber: r.license_number,
     officeAddress: r.office_address,
+    phone: r.phone ?? null,
     market: r.market,
     specialty: r.specialty,
     focusZips: r.focus.zips ?? [],
@@ -199,12 +212,12 @@ export async function saveBusinessProfile(
     await requireMembership(tx, ctx.userId, workspaceId);
     const [before] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId} FOR UPDATE`;
     const [row] = await tx<ProfileRow[]>`
-      INSERT INTO business_profiles (workspace_id, licensee_name, brokerage_name, license_number, office_address, market, specialty, focus, updated_at)
-      VALUES (${workspaceId}, ${v.licenseeName}, ${v.brokerageName}, ${v.licenseNumber ?? null}, ${v.officeAddress ?? null},
+      INSERT INTO business_profiles (workspace_id, licensee_name, brokerage_name, license_number, office_address, phone, market, specialty, focus, updated_at)
+      VALUES (${workspaceId}, ${v.licenseeName}, ${v.brokerageName}, ${v.licenseNumber ?? null}, ${v.officeAddress ?? null}, ${v.phone ?? null},
               ${v.market}, ${v.specialty ?? null}, ${tx.json(focus)}, now())
       ON CONFLICT (workspace_id) DO UPDATE SET
         licensee_name = EXCLUDED.licensee_name, brokerage_name = EXCLUDED.brokerage_name,
-        license_number = EXCLUDED.license_number, office_address = EXCLUDED.office_address,
+        license_number = EXCLUDED.license_number, office_address = EXCLUDED.office_address, phone = EXCLUDED.phone,
         market = EXCLUDED.market, specialty = EXCLUDED.specialty, focus = EXCLUDED.focus, updated_at = now()
       RETURNING *
     `;
@@ -230,7 +243,7 @@ export async function saveBusinessProfile(
 }
 
 function changedFields(a: BusinessProfile, b: BusinessProfile): string[] {
-  const keys = ['licenseeName', 'brokerageName', 'licenseNumber', 'officeAddress', 'market', 'specialty', 'focusZips', 'propertyUses', 'minValue', 'maxValue', 'includeLargeBuildings'] as const;
+  const keys = ['licenseeName', 'brokerageName', 'licenseNumber', 'officeAddress', 'phone', 'market', 'specialty', 'focusZips', 'propertyUses', 'minValue', 'maxValue', 'includeLargeBuildings'] as const;
   return keys.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
 }
 

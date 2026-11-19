@@ -84,7 +84,7 @@ const draftFor = (n: number): CampaignDraft => ({
     greeting: `Dear Owner of ${n} Example Way,`,
     paragraphs: ['I work with owners of single-family homes in Aventura, and your 1957 home stood out to me.', 'If you would like to talk about the property, I am glad to help, with no obligation.'],
     closing: 'Warm regards,',
-    signature: ['Ana Test', 'Example Bay Realty LLC', 'License SL3456789'],
+    signature: ['Ana Test', 'Example Bay Realty LLC', 'License SL3456789', '(305) 555-0123'],
   },
   followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter if there is no reply.' }],
   factsUsed: ['property.address', 'property.year_built', 'agent.brokerage'],
@@ -113,7 +113,7 @@ describe('email outreach', () => {
     const u = user();
     const { workspaceId } = await ensureWorkspace(sql, u);
     await saveBusinessProfile(sql, u, workspaceId, {
-      licenseeName: 'Ana Test',
+      licenseeName: 'Ana Test', phone: '(305) 555-0123',
       brokerageName: 'Example Bay Realty LLC',
       licenseNumber: 'SL3456789',
       ...(office ? { officeAddress: office } : {}),

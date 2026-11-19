@@ -92,6 +92,14 @@ export function ProfileForm({
           </Field>
         </div>
         <Field
+          name="phone"
+          label="Phone for owners to call or text"
+          hint="Goes in the signature of every letter, with your sign-in email, so people can reach you."
+          error={err.phone}
+        >
+          <input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={v.phone} className={fieldClass} {...aria('phone')} />
+        </Field>
+        <Field
           name="officeAddress"
           label="Office address (optional)"
           hint="Marketing emails must show a postal address. You can add it later."

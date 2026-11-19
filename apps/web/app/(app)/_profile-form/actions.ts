@@ -12,6 +12,7 @@ export interface ProfileFormValues {
   brokerageName: string;
   licenseNumber: string;
   officeAddress: string;
+  phone: string;
   market: string;
   specialty: string;
   focusZips: string;
@@ -38,6 +39,7 @@ export async function saveProfileAction(_prev: ProfileFormState, form: FormData)
     brokerageName: text('brokerageName'),
     licenseNumber: text('licenseNumber'),
     officeAddress: text('officeAddress'),
+    phone: text('phone'),
     market: text('market'),
     specialty: text('specialty'),
     focusZips: text('focusZips'),
@@ -53,6 +55,7 @@ export async function saveProfileAction(_prev: ProfileFormState, form: FormData)
       brokerageName: values.brokerageName,
       licenseNumber: values.licenseNumber || undefined,
       officeAddress: values.officeAddress || undefined,
+      phone: values.phone || undefined,
       market: values.market,
       specialty: values.specialty || undefined,
       focusZips: values.focusZips.split(/[\s,;]+/).filter(Boolean),

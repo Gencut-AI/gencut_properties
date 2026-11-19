@@ -57,6 +57,8 @@ export function DashboardTiles({ d }: { d: AgentDashboard }) {
 function actionText(a: DashboardAction): { title: string; detail: string } {
   const count = a.count ?? 0;
   switch (a.kind) {
+    case 'add_phone':
+      return { title: 'Add your phone number', detail: 'Letters show it so owners and companies can call or text you back.' };
     case 'review_letters':
       return { title: `Review ${n(count)} ${plural(count, 'letter', 'letters')} GenCut drafted`, detail: 'Nothing is sent until you approve it.' };
     case 'social_leads':

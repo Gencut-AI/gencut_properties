@@ -72,7 +72,7 @@ const letter = (paragraph: string): CampaignDraft => ({
     greeting: 'Dear Alpha Homes, L.L.C. team,',
     paragraphs: [paragraph, 'Would you be open to a short call?'],
     closing: 'Kind regards,',
-    signature: ['Ana Test', 'Example Bay Realty LLC'],
+    signature: ['Ana Test', 'Example Bay Realty LLC', '(305) 555-0123'],
   },
   followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter.' }],
   factsUsed: ['company.name', 'company.zips', 'agent.name', 'agent.brokerage'],
@@ -101,7 +101,7 @@ describe('Buyer Radar services', () => {
     const u = user();
     const { workspaceId } = await ensureWorkspace(sql, u);
     await saveBusinessProfile(sql, u, workspaceId, {
-      licenseeName: 'Ana Test', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: zips,
+      licenseeName: 'Ana Test', phone: '(305) 555-0123', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: zips,
       propertyUses: ['single_family'], minValue: 400_000, maxValue: 900_000,
     });
     return { u, workspaceId };

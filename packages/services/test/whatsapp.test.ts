@@ -56,7 +56,7 @@ const letter = (n: number): CampaignDraft => ({
     greeting: `Dear Owner of ${n} Example Way,`,
     paragraphs: ['I work with owners of single-family homes in Aventura.', 'If you would like to talk about the property, I am glad to help, with no obligation.'],
     closing: 'Warm regards,',
-    signature: ['Ana Test', 'Example Bay Realty LLC'],
+    signature: ['Ana Test', 'Example Bay Realty LLC', '(305) 555-0123'],
   },
   followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter.' }],
   factsUsed: ['property.address', 'agent.brokerage'],
@@ -135,7 +135,7 @@ describe('WhatsApp assistant', () => {
     const id = randomUUID();
     const u: RequestContext = { userId: id, email: `${id.slice(0, 8)}@example.com`, via: 'web' };
     const { workspaceId } = await ensureWorkspace(sql, u);
-    await saveBusinessProfile(sql, u, workspaceId, { licenseeName: 'Ana Test', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: [zip], propertyUses: ['single_family'] });
+    await saveBusinessProfile(sql, u, workspaceId, { licenseeName: 'Ana Test', phone: '(305) 555-0123', brokerageName: 'Example Bay Realty LLC', market: 'miami-dade', focusZips: [zip], propertyUses: ['single_family'] });
     await claimCoverage(sql, '23', [zip]);
     await storeParcels(sql, roll.fileDate, [parcel(zip, 1), parcel(zip, 2)]);
     await completeCoverage(sql, '23', [{ zip, parcelCount: 2 }], roll);

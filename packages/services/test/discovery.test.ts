@@ -138,6 +138,10 @@ describe('discovery', () => {
     status = await getDiscoveryStatus(sql, u, workspaceId);
     assert.equal(status.status, 'ready');
     assert.equal(status.opportunityCount, 2);
+    assert.ok(!(await workspacesToScore(sql)).includes(workspaceId), 'scored under the current rule: nothing to do');
+    await sql`UPDATE workspace_discovery SET scoring_version = 'seller-v0' WHERE workspace_id = ${workspaceId}`;
+    assert.ok((await workspacesToScore(sql)).includes(workspaceId), 'scored under an older rule: scored again');
+    await scoreWorkspace(sql, workspaceId, ASOF);
     assert.equal(status.coverage[0]?.parcelCount, 5);
     const [audit] = await sql<{ detail: { kept: number } }[]>`
       SELECT detail FROM audit_events WHERE workspace_id = ${workspaceId} AND action = 'discovery_scored'

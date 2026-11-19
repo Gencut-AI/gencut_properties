@@ -27,6 +27,8 @@ import {
   draftKind,
   extractJson,
   parseCampaignDraft,
+  type RollSale,
+  recentSalesSummary,
 } from '@gencut/core';
 import { z } from 'zod';
 import { recordAudit } from './audit.ts';
@@ -48,19 +50,37 @@ interface ProfileRow {
   brokerage_name: string;
   license_number: string | null;
   office_address: string | null;
+  phone: string | null;
   specialty: string | null;
   market: string;
 }
 
-function agentFrom(p: ProfileRow): AgentForDraft {
+/** The agent as letters sign: `email` is the sign-in email of the agent starting the draft (D-035). */
+function agentFrom(p: ProfileRow, email: string | null = null): AgentForDraft {
   return {
     licenseeName: p.licensee_name,
     brokerageName: p.brokerage_name,
     licenseNumber: p.license_number,
     officeAddress: p.office_address,
+    phone: p.phone ?? null,
+    email,
     specialty: p.specialty,
     market: MARKETS.find((m) => m.key === p.market)?.label ?? p.market,
   };
+}
+
+/** Qualified sales of homes of this type in the parcel's ZIP code on the stored roll, summarised for the letter. */
+async function recentSalesFor(tx: Db, parcel: StoredParcel): Promise<string | null> {
+  const rows = await tx<RollSale[]>`
+    SELECT r.payload->>'parcelId' AS "parcelId", (sale->>'year')::int AS year, (sale->>'month')::int AS month,
+           (sale->>'price')::bigint::float8 AS price, sale->>'qualificationCode' AS "qualificationCode"
+    FROM source_records r
+    JOIN zip_coverage c ON c.zip = r.zip AND c.file_date = r.file_date AND c.status = 'ready' AND c.county_code = ${parcel.countyCode}
+    CROSS JOIN LATERAL jsonb_array_elements(coalesce(r.payload->'sales', '[]'::jsonb)) AS sale
+    WHERE r.workspace_id IS NULL AND r.zip = ${parcel.situs.zip} AND r.external_id LIKE ${`${parcel.countyCode}:%`}
+      AND r.payload->>'useCode' = ${parcel.useCode}
+  `;
+  return recentSalesSummary(rows, parcel.situs.zip, parcel.useCode, parcel.parcelId);
 }
 
 async function hasPermission(db: Db, workspaceId: string, kind: 'generate' | 'discover'): Promise<boolean> {
@@ -79,7 +99,7 @@ type DraftPlan = { kind: DraftKind; facts: CampaignFact[]; title: string; object
  * under the current prompt versions, the agent's current profile and the
  * company register as stored now. Used to start a draft and to retry a failed one.
  */
-async function planDraft(tx: Db, workspaceId: string, opp: DraftOpportunity): Promise<DraftPlan> {
+async function planDraft(tx: Db, workspaceId: string, opp: DraftOpportunity, agentEmail: string | null): Promise<DraftPlan> {
   const [profile] = await tx<ProfileRow[]>`SELECT * FROM business_profiles WHERE workspace_id = ${workspaceId}`;
   if (!profile) throw new ServiceError('invalid', 'Complete your business profile first.');
   if (opp.type === 'investor_buyer') {
@@ -89,7 +109,7 @@ async function planDraft(tx: Db, workspaceId: string, opp: DraftOpportunity): Pr
     const contact = registry?.match === 'exact' && registry.record.status === 'active' ? contactOnRecord(registry.record) : null;
     return {
       kind: BUYER_DRAFT,
-      facts: buyerFacts(opp.evidence.profile, agentFrom(profile), contact),
+      facts: buyerFacts(opp.evidence.profile, agentFrom(profile, agentEmail), contact),
       title: `Introduction to ${opp.evidence.profile.name}`,
       objective: 'Introduce the agent to the company by direct mail and offer to share opportunities that fit its focus.',
     };
@@ -97,7 +117,7 @@ async function planDraft(tx: Db, workspaceId: string, opp: DraftOpportunity): Pr
   if (!opp.payload) throw new Error(`seller opportunity ${opp.id} has no source record`);
   return {
     kind: SELLER_DRAFT,
-    facts: campaignFacts(opp.payload, agentFrom(profile)),
+    facts: campaignFacts(opp.payload, agentFrom(profile, agentEmail), await recentSalesFor(tx, opp.payload)),
     title: `Introduction to the owner of ${opp.payload.situs.address || `parcel ${opp.payload.parcelId}`}`,
     objective: 'Introduce the agent to the owner by direct mail and invite a conversation.',
   };
@@ -133,7 +153,7 @@ export async function startCampaignDraft(
     `;
     if (existing) return { campaignId: existing.id, created: false };
 
-    const plan = await planDraft(tx, workspaceId, opp);
+    const plan = await planDraft(tx, workspaceId, opp, ctx.email || null);
     const [c] = await tx<{ id: string }[]>`
       INSERT INTO campaigns (workspace_id, opportunity_id, title, objective, status, facts, prompt_version, created_by)
       VALUES (${workspaceId}, ${opportunityId}, ${plan.title}, ${plan.objective},
@@ -273,7 +293,7 @@ export async function retryCampaignDraft(sql: Sql, ctx: RequestContext, workspac
           WHERE o.workspace_id = ${workspaceId} AND o.id = ${row.opportunity_id}
         `
       : [];
-    const plan = opp && (opp.type === 'potential_seller' || opp.type === 'investor_buyer') ? await planDraft(tx, workspaceId, opp) : null;
+    const plan = opp && (opp.type === 'potential_seller' || opp.type === 'investor_buyer') ? await planDraft(tx, workspaceId, opp, ctx.email || null) : null;
     if (!plan && !draftKind(row.prompt_version)) throw new ServiceError('invalid', 'This campaign can no longer be written. Start a new campaign.');
     await tx`
       UPDATE campaigns SET status = 'generating', generation_started_at = NULL, problems = NULL, error = NULL, updated_at = now(),

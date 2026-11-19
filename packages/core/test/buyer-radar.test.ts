@@ -104,15 +104,24 @@ describe('Buyer Radar: profiles and score', () => {
     const s = scoreBuyer(buyerProfile([tx(1), tx(2)]), focus, '2026-07-27');
     assert.ok(s.eligible);
     assert.equal(s.version, BUYER_SCORING_VERSION);
-    // 2 purchases 30, latest Feb 2025 is 17 months before Jul 2026 (no recency), focus ZIP 15 + mostly 10, type 10, price 5.
-    assert.deepEqual(s.reasons.map((r) => [r.code, r.points]), [['purchases', 30], ['focus_zip', 15], ['mostly_focus_zip', 10], ['focus_type', 10], ['focus_price', 5]]);
+    // 2 purchases 20, latest Feb 2025 is 17 months before Jul 2026 (no recency), focus ZIP 25 + mostly 10, type 10, price 5.
+    assert.deepEqual(s.reasons.map((r) => [r.code, r.points]), [['purchases', 20], ['focus_zip', 25], ['mostly_focus_zip', 10], ['focus_type', 10], ['focus_price', 5]]);
     assert.equal(s.score, 70);
 
     const busy = scoreBuyer(buyerProfile([1, 2, 3, 4, 5].map((n) => tx(n, { saleYear: 2026 }))), { zips: ['33101'], propertyUses: ['condo'] }, '2026-07-27');
     assert.ok(busy.eligible);
     // Mar, Apr and May 2026 fall in the 3 months ending with the latest purchase, 2 months before the roll: an active buyer.
-    assert.deepEqual(busy.reasons.map((r) => [r.code, r.points]), [['purchases', 50], ['recent', 20], ['active', 15]]);
+    assert.deepEqual(busy.reasons.map((r) => [r.code, r.points]), [['purchases', 30], ['recent', 15], ['active', 10]]);
     assert.match(busy.reasons[0]?.text ?? '', /5 qualified purchases on the county roll, Jan 2026 to May 2026/);
+  });
+
+  it('ranks a company that buys in the agent\'s ZIP codes above a busier one that never has', () => {
+    const agent = { zips: ['33180'], propertyUses: ['single_family' as const] };
+    const local = scoreBuyer(buyerProfile([tx(5, { saleYear: 2026 }), tx(6, { saleYear: 2026 })]), agent, '2026-10-28');
+    const elsewhere = scoreBuyer(buyerProfile([1, 2, 3, 4, 5, 6].map((n) => tx(n, { saleYear: 2026 }))), { ...agent, zips: ['33101'] }, '2026-10-28');
+    assert.ok(local.eligible && elsewhere.eligible);
+    assert.ok(local.score > elsewhere.score, `${local.score} > ${elsewhere.score}`);
+    assert.ok(elsewhere.score <= 70, 'never bought in the agent\'s ZIP codes: at most 70');
   });
 
   it('says nothing about intent: reasons describe past purchases and fit only', () => {
@@ -142,15 +151,15 @@ describe('Buyer Radar: profiles and score', () => {
     assert.equal(buyerProfile([tx(1, { saleMonth: null }), tx(2, { saleMonth: null })]).streak, undefined, 'no months, no streak');
   });
 
-  it('gives an active buyer 15 points and says it is recent buying, not a plan to buy', () => {
+  it('gives an active buyer 10 points and says it is recent buying, not a plan to buy', () => {
     const s = scoreBuyer(buyerProfile([tx(5, { saleYear: 2026 }), tx(6, { saleYear: 2026 })]), focus, '2026-10-28');
     assert.ok(s.eligible);
     const active = s.reasons.find((r) => r.code === 'active');
-    assert.equal(active?.points, 15);
+    assert.equal(active?.points, 10);
     assert.equal(active?.text, 'Active buyer: 2 purchases between May 2026 and Jun 2026. Recent buying on the records, not a confirmed plan to buy.');
     const same = scoreBuyer(buyerProfile([tx(1, { saleYear: 2026, saleMonth: 6 }), tx(2, { saleYear: 2026, saleMonth: 6 })]), focus, '2026-10-28');
     assert.match(same.eligible ? (same.reasons.find((r) => r.code === 'active')?.text ?? '') : '', /2 purchases in Jun 2026\./);
-    assert.equal(BUYER_SCORING_VERSION, 'buyer-v3');
+    assert.equal(BUYER_SCORING_VERSION, 'buyer-v4');
   });
 
   it('labels months for people', () => {

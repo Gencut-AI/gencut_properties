@@ -129,6 +129,8 @@ describe('accounts service', () => {
       'invalid',
     );
     assert.deepEqual(Object.keys(err.fields).sort(), ['brokerageName', 'focusZips', 'market', 'maxValue']);
+    const phone = await expectServiceError(saveBusinessProfile(sql, u, workspaceId, { ...validProfile, phone: '555-01' }), 'invalid');
+    assert.match(phone.fields.phone ?? '', /area code/);
     assert.equal(await getBusinessProfile(sql, u, workspaceId), null);
   });
 

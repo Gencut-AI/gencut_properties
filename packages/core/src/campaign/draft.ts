@@ -7,7 +7,8 @@
  *   - fair housing: no protected characteristics or proxies;
  *   - sensitivity: no hardship, death or distress language, and no wording
  *     that tells an owner how they were found (absentee, tax records…);
- *   - Florida advertising: the brokerage name is in the signature.
+ *   - Florida advertising: the brokerage name is in the signature;
+ *   - a way back: the agent's phone or email is in the signature when provided (v2).
  * A draft that fails is never shown as ready; it is regenerated once with the
  * problems listed, and otherwise marked failed with the reasons.
  */
@@ -15,7 +16,7 @@ import { type Result, err, ok } from '../result.ts';
 import { DOR_USE_LABELS, type StoredParcel } from '../sources/fl-dor-nal.ts';
 
 /** Version of the prompt and checks; recorded on every draft and model run. */
-export const CAMPAIGN_PROMPT_VERSION = 'campaign-draft-v1';
+export const CAMPAIGN_PROMPT_VERSION = 'campaign-draft-v2';
 
 export interface CampaignFact {
   /** Stable key the model cites, e.g. `property.address`. */
@@ -33,6 +34,10 @@ export interface AgentForDraft {
   readonly officeAddress: string | null;
   readonly specialty: string | null;
   readonly market: string;
+  /** For people to call or text back (profile). */
+  readonly phone?: string | null;
+  /** For people to write back: the agent's sign-in email. */
+  readonly email?: string | null;
 }
 
 
@@ -43,7 +48,7 @@ export interface AgentForDraft {
  * - the roll's market value and sale history: quoting a tax-roll value or a past
  *   purchase back to an owner reads as surveillance, and a roll value is not a price.
  */
-export function campaignFacts(parcel: StoredParcel, agent: AgentForDraft): CampaignFact[] {
+export function campaignFacts(parcel: StoredParcel, agent: AgentForDraft, recentSales: string | null = null): CampaignFact[] {
   const f: CampaignFact[] = [];
   const pr = (key: string, label: string, value: string | number | null | undefined) => {
     if (value !== null && value !== undefined && String(value).trim()) f.push({ key, label, value: String(value), source: 'public_record' });
@@ -57,10 +62,14 @@ export function campaignFacts(parcel: StoredParcel, agent: AgentForDraft): Campa
   pr('property.living_area', 'Living area (sq ft)', parcel.livingArea?.toLocaleString('en-US'));
   if ((parcel.units ?? 0) > 1) pr('property.units', 'Residential units', parcel.units);
   pr('owner.name', 'Owner of record', parcel.owner.name);
+  // Sales of homes like this one in its ZIP code, from the whole roll: context for the owner, never their own record.
+  pr('market.recent_sales', 'Recent sales nearby', recentSales);
   ap('agent.name', 'Agent name', agent.licenseeName);
   ap('agent.brokerage', 'Brokerage', agent.brokerageName);
   ap('agent.license', 'License number', agent.licenseNumber);
   ap('agent.office', 'Office address', agent.officeAddress);
+  ap('agent.phone', 'Phone', agent.phone);
+  ap('agent.email', 'Email', agent.email);
   ap('agent.specialty', 'Specialty', agent.specialty);
   ap('agent.market', 'Market', agent.market);
   return f;
@@ -96,9 +105,11 @@ Rules you must follow:
 2. Never mention or hint at how this owner was selected: do not mention tax records, assessments, homestead, absentee or out-of-state ownership, estates, probate, inheritance, death, divorce, debt, foreclosure, illness, age, or any personal hardship. Never imply you know the owner's plans or circumstances.
 3. Fair housing: never refer to race, colour, religion, national origin, sex, disability, familial status (children, families, couples, singles), age, or any proxy for them, and never describe who should or should not live in a home or neighbourhood.
 4. No pressure or guarantees: no "act now", no guaranteed sale or price, no claims that the market is about to change.
-5. Tone: warm, brief, professional, specific to the property. The letter is under 220 words, 2 to 4 short paragraphs, ending with one low-pressure invitation to talk.
-6. The signature must include the agent's name and the brokerage name exactly as provided, and the license number if provided.
-7. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the owner replies with an email). 2 to 4 steps, days counted from the first letter.
+5. Tone: warm, brief, professional, specific to the property. The letter is under 220 words, 2 to 4 short paragraphs. Do not remark on the home as unusual or say you would like to learn about it; write as a local agent who knows the area.
+6. The signature must include the agent's name and the brokerage name exactly as provided, the license number if provided, and the agent's phone and email if provided, each on its own line.
+7. Mention the agent's specialty only if it plainly fits this property; never tell the owner the property is outside the agent's focus.
+8. Give the owner a reason to reply: end with one specific, low-pressure offer they can act on, such as a free, no-obligation estimate of what the home could sell for today or a short summary of recent sales nearby, and say how to reach the agent (the phone and/or email provided). If market.recent_sales is provided you may cite it once, exactly as given; it describes sales of other homes, never this owner's.
+9. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the owner replies with an email). 2 to 4 steps, days counted from the first letter.
 
 Answer with a single JSON object and nothing else, in this shape:
 {"title": string, "strategy": {"summary": string, "angle": string, "reasons": [{"text": string, "factKeys": [string]}]}, "letter": {"greeting": string, "paragraphs": [string], "closing": string, "signature": [string]}, "followUp": [{"day": number, "channel": "mail" | "call_task" | "email", "action": string}], "factsUsed": [string]}
@@ -185,6 +196,7 @@ export interface DraftProblem {
     | 'unsupported_figure'
     | 'unknown_fact'
     | 'missing_brokerage'
+    | 'missing_contact'
     | 'prohibited_term'
     | 'too_long'
     | 'reveals_subject'
@@ -260,11 +272,36 @@ export function prohibitedTerms(text: string, agent: Pick<AgentForDraft, 'licens
   return problems;
 }
 
+/** The agent's own phone number, in any format, is not a figure to ground: "305.555.0123" is the fact "(305) 555-0123". */
+function withoutAgentPhone(text: string, facts: readonly CampaignFact[]): string {
+  const phone = facts.find((f) => f.key === 'agent.phone')?.value.replace(/\D/g, '');
+  if (!phone) return text;
+  return text.replace(/\+?\d[\d\s().-]{6,}\d/g, (m) => (m.replace(/\D/g, '').endsWith(phone.slice(-10)) ? ' ' : m));
+}
+
+/**
+ * A letter nobody can answer cannot win business: when the facts give the
+ * agent's phone or email, the signature must carry at least one of them (v2).
+ * Letters written before contact facts existed have neither, and are not held to it.
+ */
+export function contactProblems(signature: readonly string[], facts: readonly CampaignFact[]): DraftProblem[] {
+  const phone = facts.find((f) => f.key === 'agent.phone')?.value;
+  const email = facts.find((f) => f.key === 'agent.email')?.value;
+  if (!phone && !email) return [];
+  const sig = signature.join(' ');
+  const digits = (v: string) => v.replace(/\D/g, '');
+  const hasPhone = !!phone && digits(sig).includes(digits(phone));
+  const hasEmail = !!email && sig.toLowerCase().includes(email.toLowerCase());
+  if (hasPhone || hasEmail) return [];
+  const ways = [phone, email].filter(Boolean).join(' and ');
+  return [{ code: 'missing_contact', message: `The signature must say how to reach the agent: ${ways}.` }];
+}
+
 /** Run every check. An empty list means the draft may be shown for review. */
 export function checkCampaignDraft(d: CampaignDraft, facts: readonly CampaignFact[], agent: AgentForDraft): DraftProblem[] {
   const keys = new Set(facts.map((f) => f.key));
   // Follow-up actions count days ("send a second letter after 45 days"); they are checked for wording, not figures.
-  const problems: DraftProblem[] = [...unsupportedFigures(draftText(d, false), facts)];
+  const problems: DraftProblem[] = [...unsupportedFigures(withoutAgentPhone(draftText(d, false), facts), facts)];
 
   for (const k of [...d.factsUsed, ...d.strategy.reasons.flatMap((r) => r.factKeys)]) {
     if (!keys.has(k)) problems.push({ code: 'unknown_fact', message: `Fact key "${k}" was not provided.` });
@@ -274,6 +311,7 @@ export function checkCampaignDraft(d: CampaignDraft, facts: readonly CampaignFac
     problems.push({ code: 'missing_brokerage', message: `The signature must include the brokerage name "${agent.brokerageName}".` });
   }
 
+  problems.push(...contactProblems(d.letter.signature, facts));
   problems.push(...prohibitedTerms(draftText(d), agent));
 
   const words = [...d.letter.paragraphs, d.letter.greeting, d.letter.closing].join(' ').split(/\s+/).filter(Boolean).length;

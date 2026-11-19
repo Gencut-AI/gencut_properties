@@ -21,7 +21,7 @@
  * docs/validation), so v3 claims ownership tenure only when the gap appears in
  * two consecutive rolls.
  */
-export const SCORING_VERSION = 'seller-v3';
+export const SCORING_VERSION = 'seller-v4';
 
 export const PROPERTY_USES = ['single_family', 'condo', 'townhouse', 'multifamily', 'vacant_land', 'other'] as const;
 export type PropertyUse = (typeof PROPERTY_USES)[number];
@@ -144,6 +144,8 @@ export function ownerKindOf(name: string): OwnerKind {
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const pct = (r: number) => `${Math.round(r * 100)}%`;
+/** Homes built within this many years earn no tenure points from the assessment gap. */
+export const RECENT_BUILD_YEARS = 10;
 const ratio = (assessed?: number, just?: number) =>
   assessed && just && just > 0 && assessed > 0 ? Math.min(1, assessed / just) : undefined;
 
@@ -193,7 +195,7 @@ export function scoreSellerOpportunity(p: ParcelFacts, focus: AgentFocus, asOf: 
     add('estate_owner', 15, 'Owner of record is listed as an estate.', ['ownerName']);
   }
 
-  addTenure(p, add);
+  addTenure(p, add, asOf);
 
   const sale = p.recentSales?.find((s) => s.qualified || (s.price ?? 0) >= 10_000);
   if (sale) {
@@ -225,9 +227,13 @@ export function scoreSellerOpportunity(p: ParcelFacts, focus: AgentFocus, asOf: 
 function addTenure(
   p: ParcelFacts,
   add: (code: string, points: number, text: string, facts: (keyof ParcelFacts)[]) => void,
+  asOf: Date,
 ): void {
   const now = ratio(p.assessedValue, p.justValue);
   if (now === undefined) return;
+  // seller-v4 (D-035): in a home built in the last 10 years the gap says nothing about how long it has been owned
+  // (a 2020 condo assessed at 39% scored as long-held); new construction joins the roll in stages.
+  if (p.yearBuilt !== undefined && asOf.getUTCFullYear() - p.yearBuilt < RECENT_BUILD_YEARS) return;
   // A homestead's 3% cap builds a gap more slowly than the 10% non-homestead cap.
   const deep = p.homestead ? 0.5 : 0.6;
   const wide = p.homestead ? 0.75 : 0.8;

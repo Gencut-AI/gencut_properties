@@ -31,12 +31,16 @@ export const BUYER_DRAFT: DraftKind = { version: BUYER_LETTER_PROMPT_VERSION, au
  * not apply to its stored facts: buyer-intro-v2 added the greeting rule for
  * `company.contact`, a fact v1 campaigns never have; buyer-intro-v3 added that
  * the contact's title is never attached to the agent, which only tightens how a
- * v2 letter is worded. A stored campaign must never become unreadable because
- * its prompt was revised.
+ * v2 letter is worded. buyer-intro-v4 and campaign-draft-v2 (D-035) add the
+ * agent's phone and email and require one in the signature only when those facts
+ * are present, which earlier campaigns never have. A stored campaign must never
+ * become unreadable because its prompt was revised.
  */
 export const RETIRED_VERSIONS: Readonly<Record<string, string>> = {
   'buyer-intro-v1': BUYER_LETTER_PROMPT_VERSION,
   'buyer-intro-v2': BUYER_LETTER_PROMPT_VERSION,
+  'buyer-intro-v3': BUYER_LETTER_PROMPT_VERSION,
+  'campaign-draft-v1': CAMPAIGN_PROMPT_VERSION,
 };
 
 /** The kind a stored campaign was written under; null for a version GenCut no longer knows. */

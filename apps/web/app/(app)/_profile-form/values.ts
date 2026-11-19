@@ -9,6 +9,7 @@ export function profileToFormValues(p: BusinessProfile | null): ProfileFormValue
     brokerageName: p?.brokerageName ?? '',
     licenseNumber: p?.licenseNumber ?? '',
     officeAddress: p?.officeAddress ?? '',
+    phone: p?.phone ?? '',
     market: p?.market ?? 'miami-dade',
     specialty: p?.specialty ?? '',
     focusZips: p?.focusZips.join(' ') ?? '',

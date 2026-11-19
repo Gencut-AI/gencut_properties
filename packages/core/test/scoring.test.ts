@@ -92,6 +92,14 @@ describe('seller opportunity scoring v3', () => {
     assert.match(gap?.text ?? '', /One roll cannot show how long/);
   });
 
+  it('claims no tenure from the assessment gap in a home built in the last 10 years', () => {
+    const { priorAssessment: _p, ...oneRoll } = absenteeLongHeld;
+    assert.ok(!codes({ ...oneRoll, yearBuilt: 2020 }).includes('assessment_gap'), 'built 2020: the gap is not tenure');
+    assert.ok(!codes({ ...absenteeLongHeld, yearBuilt: 2018 }).some((c) => c.startsWith('long_held')), 'two rolls, still too new');
+    assert.ok(codes({ ...oneRoll, yearBuilt: 2005 }).includes('assessment_gap'), 'built 2005: the gap still counts');
+    assert.ok(codes(oneRoll).includes('assessment_gap'), 'no year built on the roll: unchanged');
+  });
+
   it('penalises a sale on either roll in the last three years but ignores nominal transfers', () => {
     const sold = eligible({ ...absenteeLongHeld, recentSales: [{ year: 2024, month: 3, price: 1_900_000, qualified: true }] });
     assert.equal(sold.reasons.find((r) => r.code === 'recent_purchase')?.text, 'Sold in March 2024; a sale is unlikely soon.');

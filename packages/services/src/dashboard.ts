@@ -34,7 +34,7 @@ export interface DashboardCounts {
   readonly instagramWaiting: number;
 }
 
-export type DashboardActionKind = 'review_letters' | 'social_leads' | 'instagram' | 'top_seller' | 'top_active_buyer' | 'link_whatsapp' | 'lead_page';
+export type DashboardActionKind = 'add_phone' | 'review_letters' | 'social_leads' | 'instagram' | 'top_seller' | 'top_active_buyer' | 'link_whatsapp' | 'lead_page';
 
 export interface DashboardAction {
   readonly kind: DashboardActionKind;
@@ -94,7 +94,7 @@ export async function getAgentDashboard(db: Db, ctx: RequestContext, workspaceId
   const zips = (profile?.zips ?? []).filter((z) => /^\d{5}$/.test(z));
   const county = profile ? marketCountyCode(profile.market) : '';
 
-  const [c] = await db<(DashboardCounts & { whatsapp_linked: boolean; has_lead_page: boolean })[]>`
+  const [c] = await db<(DashboardCounts & { whatsapp_linked: boolean; has_lead_page: boolean; has_phone: boolean })[]>`
     SELECT
       (SELECT count(*)::int FROM opportunities WHERE workspace_id = ${workspaceId} AND type = 'potential_seller' AND status = ANY(${ACTIVE}::text[])) AS "sellerLeads",
       (SELECT count(*)::int FROM opportunities WHERE workspace_id = ${workspaceId} AND type = 'investor_buyer' AND status = ANY(${ACTIVE}::text[])) AS "buyers",
@@ -107,7 +107,8 @@ export async function getAgentDashboard(db: Db, ctx: RequestContext, workspaceId
       (SELECT count(*)::int FROM inbound_leads WHERE workspace_id = ${workspaceId} AND status = 'new') AS "newSocialLeads",
       (SELECT count(*)::int FROM instagram_comments WHERE workspace_id = ${workspaceId} AND status = 'new' AND reply_state <> 'sent') AS "instagramWaiting",
       EXISTS (SELECT 1 FROM whatsapp_links WHERE user_id = ${ctx.userId} AND revoked_at IS NULL) AS whatsapp_linked,
-      EXISTS (SELECT 1 FROM lead_pages WHERE workspace_id = ${workspaceId} AND active) AS has_lead_page
+      EXISTS (SELECT 1 FROM lead_pages WHERE workspace_id = ${workspaceId} AND active) AS has_lead_page,
+      EXISTS (SELECT 1 FROM business_profiles WHERE workspace_id = ${workspaceId} AND phone IS NOT NULL) AS has_phone
   `;
   const counts: DashboardCounts = {
     sellerLeads: c?.sellerLeads ?? 0,
@@ -140,6 +141,8 @@ export async function getAgentDashboard(db: Db, ctx: RequestContext, workspaceId
   if (counts.campaignsInReview > 0) actions.push({ kind: 'review_letters', count: counts.campaignsInReview, href: review ? `/campaigns/${review.id}` : '/campaigns' });
   if (counts.newSocialLeads > 0) actions.push({ kind: 'social_leads', count: counts.newSocialLeads, href: '/leads#social' });
   if (counts.instagramWaiting > 0) actions.push({ kind: 'instagram', count: counts.instagramWaiting, href: '/leads#instagram' });
+  // Letters sign with the phone (D-035): without one, owners can only write back by email.
+  if (profile && !c?.has_phone) actions.push({ kind: 'add_phone', href: '/profile#phone' });
   if (topSeller) actions.push({ kind: 'top_seller', href: `/opportunities/${topSeller.id}`, score: topSeller.score, ...(topSeller.address ? { subject: topSeller.address } : {}) });
   if (topBuyer) actions.push({ kind: 'top_active_buyer', href: `/buyers/${topBuyer.id}`, score: topBuyer.score, ...(topBuyer.name ? { subject: topBuyer.name } : {}) });
   if (!c?.has_lead_page) actions.push({ kind: 'lead_page', href: '/leads#social' });

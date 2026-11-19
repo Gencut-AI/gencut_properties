@@ -21,7 +21,7 @@ import {
 import type { RecordContact } from '../sources/fl-sunbiz.ts';
 import type { BuyerProfile } from './buyer-radar.ts';
 
-export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v3';
+export const BUYER_LETTER_PROMPT_VERSION = 'buyer-intro-v4';
 
 /** ZIP codes and home types passed to the writer: the company's top few, by purchases. */
 const MAX_PATTERN_ITEMS = 3;
@@ -50,6 +50,8 @@ export function buyerFacts(profile: BuyerProfile, agent: AgentForDraft, contact:
   ap('agent.brokerage', 'Brokerage', agent.brokerageName);
   ap('agent.license', 'License number', agent.licenseNumber);
   ap('agent.office', 'Office address', agent.officeAddress);
+  ap('agent.phone', 'Phone', agent.phone);
+  ap('agent.email', 'Email', agent.email);
   ap('agent.specialty', 'Specialty', agent.specialty);
   ap('agent.market', 'Market', agent.market);
   return f;
@@ -64,9 +66,9 @@ Rules you must follow:
 4. Never mention how the company was found or what it bought: no purchases, sales, deeds, records, counts, addresses, prices or dates. You may say the agent works in the ZIP codes and home types provided.
 5. Fair housing: never refer to race, colour, religion, national origin, sex, disability, familial status, age, or any proxy for them, and never describe who should or should not live in a home or neighbourhood.
 6. No pressure or guarantees: no "act now", no guaranteed returns, no claims that the market is about to change.
-7. Tone: brief, professional, business-to-business. The letter is under 180 words, 2 or 3 short paragraphs, ending with one low-pressure invitation to talk.
+7. Tone: brief, professional, business-to-business. The letter is under 180 words, 2 or 3 short paragraphs, ending with one low-pressure invitation to talk that says how to reach the agent (the phone and/or email provided).
 8. If a person the letter is addressed to is provided (company.contact), greet them by their full name ("Dear Jane Doe,") and write to them as someone at the company. Never say where their name came from. Their title (company.contact_title) is theirs: if you mention it, attach it to them ("in your role as President"), never to a sentence about yourself, where it could read as your own title ("I am writing to introduce myself as President of…"). Without a person, address the company.
-9. The signature must include the agent's name and the brokerage name exactly as provided, and the license number if provided.
+9. The signature must include the agent's name and the brokerage name exactly as provided, the license number if provided, and the agent's phone and email if provided, each on its own line.
 10. The follow-up plan uses only these channels: "mail" (another letter), "call_task" (a reminder for the agent to call if they have a lawful basis to), "email" (only if the company replies with an email). 2 or 3 steps, days counted from the first letter.
 
 Answer with a single JSON object and nothing else, in this shape:

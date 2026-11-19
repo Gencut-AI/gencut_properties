@@ -37,7 +37,7 @@ import {
 const ASOF = new Date('2026-10-13T12:00:00Z');
 const roll = { sourceFile: 'Dade 23 Preliminary NAL 2026.zip', rollLabel: '2026 preliminary roll', fileDate: '2026-07-27' };
 const profile = (zip: string) => ({
-  licenseeName: 'Ana Test',
+  licenseeName: 'Ana Test', phone: '(305) 555-0123',
   brokerageName: 'Example Bay Realty LLC',
   licenseNumber: 'SL3456789',
   market: 'miami-dade',
@@ -77,7 +77,7 @@ function draftFor(n: number, overrides: Partial<CampaignDraft['letter']> = {}): 
       greeting: `Dear Owner of ${n} Example Way,`,
       paragraphs: ['I work with owners of single-family homes in Aventura, and your 1957 home stood out to me.', 'If you would like to talk about the property, I am glad to help, with no obligation.'],
       closing: 'Warm regards,',
-      signature: ['Ana Test', 'Example Bay Realty LLC', 'License SL3456789'],
+      signature: ['Ana Test', 'Example Bay Realty LLC', 'License SL3456789', '(305) 555-0123'],
       ...overrides,
     },
     followUp: [{ day: 21, channel: 'mail', action: 'Send a short second letter if there is no reply.' }],
@@ -196,9 +196,14 @@ describe('campaign drafts and outcomes', () => {
       { calls: 1, cost: 0.0096, models: ['anthropic/claude-sonnet-5-5'] },
     );
     assert.ok(c.facts.some((f) => f.key === 'property.year_built' && f.source === 'public_record'));
+    assert.deepEqual(
+      c.facts.filter((f) => f.key === 'agent.phone' || f.key === 'agent.email').map((f) => f.value),
+      ['(305) 555-0123', u.email],
+      'letters carry a way to reach the agent: the profile phone and the sign-in email',
+    );
     const [run] = await sql<{ fact_keys: string[]; prompt_version: string }[]>`SELECT fact_keys, prompt_version FROM model_runs WHERE campaign_id = ${campaignId}`;
     assert.ok(run?.fact_keys.includes('agent.brokerage'));
-    assert.equal(run?.prompt_version, 'campaign-draft-v1');
+    assert.equal(run?.prompt_version, 'campaign-draft-v2');
     assert.equal((await listCampaigns(sql, u, workspaceId, { opportunityId: opp.id }))[0]?.id, campaignId);
   });
 

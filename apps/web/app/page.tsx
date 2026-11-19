@@ -9,8 +9,8 @@ import { currentUser } from '../lib/session.ts';
 export const dynamic = 'force-dynamic';
 
 const steps = [
-  { title: 'Find', body: 'Homeowners in your area worth a conversation, from public property records, with the reasons spelled out.' },
-  { title: 'Produce', body: 'A complete campaign for each one: strategy, a short branded video, letter, email and follow-ups.' },
+  { title: 'Find', body: 'Homeowners likely to sell and companies that keep buying in your area, from public records, with the reasons spelled out.' },
+  { title: 'Produce', body: 'A complete campaign for each one: strategy, letter, email, a social post with a neighborhood picture, and follow-ups.' },
   { title: 'Approve', body: 'Nothing goes out until you say so. Every message is checked against Florida and federal rules first.' },
 ] as const;
 
@@ -43,8 +43,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           Your marketing department, on call.
         </h1>
         <p className="mt-6 max-w-[56ch] text-lg text-ink-soft">
-          GenCut finds the Miami homeowners worth calling, produces the campaign to win the listing, and waits for your
-          yes.
+          GenCut finds the Miami homeowners likely to sell and the investors buying near you, prepares the campaign to reach
+          them, and waits for your yes.
         </p>
         <Link
           href="/sign-in"
@@ -65,8 +65,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
       <footer className="mt-auto pt-14 text-sm text-ink-soft">
         <p>
-          Version {health.version}
-          {health.commit ? ` (${health.commit})` : ''}. Database {health.database.replace('_', ' ')}.
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-ink">
+            Privacy
+          </Link>
+          <span className="ml-3 text-xs">
+            Version {health.version}
+            {health.commit ? ` (${health.commit})` : ''}
+          </span>
         </p>
       </footer>
     </main>

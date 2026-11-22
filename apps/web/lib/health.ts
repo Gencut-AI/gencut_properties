@@ -3,6 +3,8 @@
  * logic is testable without a server. Never includes connection strings or
  * error text — only states.
  */
+import { googleSignInEnabled } from './sign-in.ts';
+
 export type DatabaseState = 'reachable' | 'unreachable' | 'not_configured';
 
 export interface Health {
@@ -10,6 +12,8 @@ export interface Health {
   readonly version: string;
   readonly commit: string | null;
   readonly database: DatabaseState;
+  /** Whether "Continue with Google" is switched on (GENCUT_GOOGLE_SIGNIN). */
+  readonly googleSignIn: boolean;
   readonly checkedAt: string;
 }
 
@@ -34,6 +38,7 @@ export async function getHealth(
     version: env.GENCUT_VERSION || '0.0.0',
     commit: env.GENCUT_COMMIT ? env.GENCUT_COMMIT.slice(0, 12) : null,
     database,
+    googleSignIn: googleSignInEnabled(env),
     checkedAt: now().toISOString(),
   };
 }

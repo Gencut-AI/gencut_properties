@@ -12,8 +12,14 @@ describe('health report', () => {
       version: '0.1.0',
       commit: null,
       database: 'not_configured',
+      googleSignIn: false,
       checkedAt: '2026-10-10T18:00:00.000Z',
     });
+  });
+
+  it('reports whether Google sign-in is switched on', async () => {
+    assert.equal((await getHealth({ GENCUT_GOOGLE_SIGNIN: 'on' }, async () => true, now)).googleSignIn, true);
+    assert.equal((await getHealth({ GENCUT_GOOGLE_SIGNIN: 'off' }, async () => true, now)).googleSignIn, false);
   });
 
   it('reports a reachable database', async () => {

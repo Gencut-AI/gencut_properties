@@ -370,3 +370,17 @@ can give exact purchase dates.
 - **The Leads shortlist** said "Every lead here already has a campaign" before any leads existed. It now explains that the shortlist appears after the first run.
 
 **Open:** the Film Crew needs `GEMINI_API_KEY` on Netlify; without it every campaign shows "not set up on this site yet".
+
+## D-036 · 2026-11-22 · Continue with Google, and a code to type from the sign-in email
+
+**Why:** in GenCut Famous, both of the first two real outside sign-ups stalled at the email step: one link expired, and one email was never opened. Two Google sign-ups went straight through. Properties has the same email-only sign-in. Work mail scanners can also use up a one-time link before the person clicks it.
+
+**Decision:**
+- **"Continue with Google"** is on the sign-in page only when `GENCUT_GOOGLE_SIGNIN=on`, after the Google provider is enabled in this Supabase project (GenCut Dev). Without that order, the button would return "provider is not enabled".
+  - A server action calls `signInWithOAuth` with `skipBrowserRedirect`, and returns to `/auth/confirm?via=google`.
+  - The PKCE verifier stays in the same browser, so the existing code exchange completes it.
+  - A failure with `via=google` shows its own message.
+  - `/api/health` reports `googleSignIn`. Google Cloud has a project of its own ("GenCut Properties"), so the consent screen names this app, with no logo so it can be published at once.
+- **The sign-in email also carries its code (`{{ .Token }}`).** The "Check your inbox" screen has a code box (`verifyOtp` with type `email`), plus "Send a new email", "Use a different email" and a check-your-spam hint.
+  - Links and codes last 24 hours (Email OTP expiration 86400).
+- Email sign-in stays as the fallback. There's no invite or referral state to carry through sign-up in this app.

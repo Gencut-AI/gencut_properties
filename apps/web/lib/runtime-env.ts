@@ -9,5 +9,6 @@ export function healthEnv(): Record<string, string | undefined> {
     DATABASE_URL: process.env.DATABASE_URL,
     GENCUT_VERSION: process.env.GENCUT_VERSION,
     GENCUT_COMMIT: process.env.GENCUT_COMMIT,
+    GENCUT_GOOGLE_SIGNIN: process.env.GENCUT_GOOGLE_SIGNIN,
   };
 }

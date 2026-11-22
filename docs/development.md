@@ -56,9 +56,34 @@ project that runs this app needs the setup below, or a link opened on another de
    with sending access to the verified domain; sender `noreply@mail.gencut.ai`.
 2. **Authentication → Emails → Templates:** in both **Magic link or OTP** and **Confirm sign up**,
    the link is
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/home`.
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/home`,
+   and the email also shows the code `{{ .Token }}`, which people can type on the "Check your
+   inbox" screen (D-036). **Sign In / Providers → Email → Email OTP expiration:** 86400 (24 hours).
+   **Rate Limits:** email at least 100 an hour.
 3. **Authentication → URL Configuration:** Site URL is the app's public address
    (`https://gencutv1.netlify.app`); redirect URLs cover it, deploy previews and
    `http://localhost:3000/**`.
 
 Check: ask for a link on one device and open it on another; it should land on Home.
+
+### Continue with Google (D-036)
+
+Settings belong to this app's Supabase project (GenCut Dev) and Netlify site (gencutv1), not to
+GenCut Famous.
+
+1. **Google Cloud:** a project of its own, "GenCut Properties".
+   - In Google Auth Platform: app name GenCut Properties, audience External, **no logo** (a logo
+     makes Google review the brand before the app can be published).
+   - Authorized domains: `vmyhywhhzmwpujmsocez.supabase.co` and the site's domain. Then publish
+     the app.
+   - Create a Web application client:
+     - JavaScript origin: the site URL.
+     - Redirect URI: `https://vmyhywhhzmwpujmsocez.supabase.co/auth/v1/callback`.
+2. **Supabase → Authentication → Sign In / Providers → Google:** enable it, and paste the client
+   ID and secret.
+3. **Netlify:** `GENCUT_GOOGLE_SIGNIN=on`, then redeploy. `/api/health` reports `googleSignIn: true`.
+
+Check:
+- `https://vmyhywhhzmwpujmsocez.supabase.co/auth/v1/authorize?provider=google&redirect_to=<site>/auth/confirm`
+  should reach accounts.google.com.
+- A Google sign-in should show `raw_app_meta_data->>'provider' = 'google'` in `auth.users`.
